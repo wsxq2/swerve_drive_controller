@@ -28,7 +28,7 @@ TEST(TestLoadSwerveDriveController, load_controller)
     std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
 
   controller_manager::ControllerManager cm(
-    executor, ros2_control_test_assets::minimal_robot_urdf, true, "test_controller_manager");
+    executor, "test_controller_manager");
 
   const std::string test_file_path =
     std::string(TEST_FILES_DIRECTORY) + "/config/test_swerve_drive_controller.yaml";

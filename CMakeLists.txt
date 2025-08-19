@@ -46,26 +46,18 @@ target_include_directories(swerve_drive_controller PUBLIC
   "$<INSTALL_INTERFACE:include/swerve_drive_controller>"
 )
 
-target_link_libraries(swerve_drive_controller PUBLIC
+ament_target_dependencies(swerve_drive_controller PUBLIC
+  ${THIS_PACKAGE_INCLUDE_DEPENDS}
+)
+
+target_link_libraries(swerve_drive_controller PUBLIC 
   swerve_drive_controller_parameters
-  controller_interface::controller_interface
-  hardware_interface::hardware_interface
-  pluginlib::pluginlib
-  rclcpp::rclcpp
-  rclcpp_lifecycle::rclcpp_lifecycle
-  rcpputils::rcpputils
-  realtime_tools::realtime_tools
-  tf2::tf2
-  tf2_geometry_msgs::tf2_geometry_msgs
-  ${tf2_msgs_TARGETS}
-  ${geometry_msgs_TARGETS}
-  ${control_msgs_TARGETS}
-  ${nav_msgs_TARGETS}
 )
 
 pluginlib_export_plugin_description_file(controller_interface swerve_drive_plugin.xml)
 
 if(BUILD_TESTING)
+  find_package(controller_manager_msgs REQUIRED)
   find_package(controller_manager REQUIRED)
   find_package(ament_cmake_gmock REQUIRED)
   find_package(ament_cmake_gtest REQUIRED)
@@ -74,29 +66,22 @@ if(BUILD_TESTING)
   ament_add_gtest(test_swerve_drive_controller
     test/test_swerve_drive_controller.cpp
   )
-
+  
   target_link_libraries(test_swerve_drive_controller
     swerve_drive_controller
-    controller_interface::controller_interface
-    hardware_interface::hardware_interface
-    pluginlib::pluginlib
-    rclcpp::rclcpp
-    rclcpp_lifecycle::rclcpp_lifecycle
-    rcpputils::rcpputils
-    realtime_tools::realtime_tools
-    tf2::tf2
-    ${tf2_msgs_TARGETS}
-    ${geometry_msgs_TARGETS}
-    ${control_msgs_TARGETS}
-    ${nav_msgs_TARGETS}
+    swerve_drive_controller_parameters
   )
 
   add_definitions(-DTEST_FILES_DIRECTORY="${CMAKE_CURRENT_SOURCE_DIR}/test")
 
   ament_add_gmock(test_load_swerve_drive_controller test/test_load_swerve_drive_controller.cpp)
-  target_link_libraries(test_load_swerve_drive_controller
-    controller_manager::controller_manager
-    ros2_control_test_assets::ros2_control_test_assets
+  target_compile_options(test_load_swerve_drive_controller PRIVATE
+    -Wno-shadow
+  )
+  ament_target_dependencies(test_load_swerve_drive_controller
+    controller_manager
+    controller_manager_msgs
+    ros2_control_test_assets
   )
 endif()
 

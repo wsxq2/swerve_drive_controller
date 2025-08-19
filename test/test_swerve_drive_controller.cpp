@@ -88,8 +88,8 @@ void SwerveDriveControllerTest::SetUpController()
   auto init_result = controller_->init(
     "swerve_controller_test",  // controller_name
     "",                        // urdf (empty for test)
-    100,                       // cm_update_rate (100 Hz)
-    "",                        // node_namespace (default)
+    //100,                       // cm_update_rate (100 Hz)
+    //"",                        // node_namespace (default)
     rclcpp::NodeOptions()      // node_options (default)
   );
   if (init_result != controller_interface::return_type::OK)

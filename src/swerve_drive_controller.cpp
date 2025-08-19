@@ -55,7 +55,7 @@ Wheel::Wheel(
 
 void Wheel::set_velocity(double velocity) { velocity_.get().set_value(velocity); }
 
-double Wheel::get_feedback() { return Wheel::feedback_.get().get_optional().value(); }
+double Wheel::get_feedback() { return Wheel::feedback_.get().get_value(); }
 
 Axle::Axle(
   std::reference_wrapper<hardware_interface::LoanedCommandInterface> position,
@@ -66,7 +66,7 @@ Axle::Axle(
 
 void Axle::set_position(double position) { position_.get().set_value(position); }
 
-double Axle::get_feedback() { return Axle::feedback_.get().get_optional().value(); }
+double Axle::get_feedback() { return Axle::feedback_.get().get_value(); }
 
 std::array<std::pair<double, double>, 4> wheel_positions_ = {{
   {-0.1, 0.175},   // front left
@@ -363,7 +363,7 @@ controller_interface::return_type SwerveController::update(
 {
   auto logger = rclcpp::get_logger("SwerveController");
 
-  if (this->get_lifecycle_state().id() == State::PRIMARY_STATE_INACTIVE)
+  if (this->get_state().id() == State::PRIMARY_STATE_INACTIVE)
   {
     if (!is_halted_)
     {
