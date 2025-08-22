@@ -32,6 +32,7 @@ class SwerveDriveControllerTest : public ::testing::Test
 protected:
   void SetUp() override;
   void SetUpController();
+  void SetUpControllerWithInit();
   void SetUpInterfaces();
   void PublishTwistStamped(double linear_x, double linear_y, double angular_z);
   void PublishTwist(double linear_x, double linear_y, double angular_z);

@@ -36,14 +36,23 @@ void SwerveDriveControllerTest::SetUp()
   RCLCPP_INFO(node_->get_logger(), "Test node initialized");
 
   // Declare parameters
-  node_->declare_parameter("joint_steering_left_front", "front_left_axle_joint");
-  node_->declare_parameter("joint_steering_right_front", "front_right_axle_joint");
-  node_->declare_parameter("joint_steering_left_rear", "rear_left_axle_joint");
-  node_->declare_parameter("joint_steering_right_rear", "rear_right_axle_joint");
-  node_->declare_parameter("joint_wheel_left_front", "front_left_wheel_joint");
-  node_->declare_parameter("joint_wheel_right_front", "front_right_wheel_joint");
-  node_->declare_parameter("joint_wheel_left_rear", "rear_left_wheel_joint");
-  node_->declare_parameter("joint_wheel_right_rear", "rear_right_wheel_joint");
+  node_->declare_parameter("front_left_wheel_joint", "front_left_wheel_joint");
+  node_->declare_parameter("front_right_wheel_joint", "front_right_wheel_joint");
+  node_->declare_parameter("rear_left_wheel_joint", "rear_left_wheel_joint");
+  node_->declare_parameter("rear_right_wheel_joint", "rear_right_wheel_joint");
+  node_->declare_parameter("front_left_axle_joint", "front_left_axle_joint");
+  node_->declare_parameter("front_right_axle_joint", "front_right_axle_joint");
+  node_->declare_parameter("rear_left_axle_joint", "rear_left_axle_joint");
+  node_->declare_parameter("rear_right_axle_joint", "rear_right_axle_joint");
+
+  // node_->declare_parameter("joint_steering_left_front", "front_left_axle_joint");
+  // node_->declare_parameter("joint_steering_right_front", "front_right_axle_joint");
+  // node_->declare_parameter("joint_steering_left_rear", "rear_left_axle_joint");
+  // node_->declare_parameter("joint_steering_right_rear", "rear_right_axle_joint");
+  // node_->declare_parameter("joint_wheel_left_front", "front_left_wheel_joint");
+  // node_->declare_parameter("joint_wheel_right_front", "front_right_wheel_joint");
+  // node_->declare_parameter("joint_wheel_left_rear", "rear_left_wheel_joint");
+  // node_->declare_parameter("joint_wheel_right_rear", "rear_right_wheel_joint");
   node_->declare_parameter("cmd_vel_topic", "~/cmd_vel");
   node_->declare_parameter("odom", "~/odom");
   node_->declare_parameter("base_footprint", "base_footprint");
@@ -98,6 +107,21 @@ void SwerveDriveControllerTest::SetUpController()
     GTEST_FAIL() << "Controller node initialization failed";
   }
   RCLCPP_INFO(node_->get_logger(), "Controller node initialized");
+}
+
+void SwerveDriveControllerTest::SetUpControllerWithInit()
+{
+  SetUpController();
+  
+  RCLCPP_INFO(node_->get_logger(), "Calling on_init for test setup");
+  auto result = controller_->on_init();
+  init_successful_ = (result == controller_interface::CallbackReturn::SUCCESS);
+  
+  if (!init_successful_) {
+    RCLCPP_ERROR(node_->get_logger(), "on_init failed during setup, result: %d", static_cast<int>(result));
+  } else {
+    RCLCPP_INFO(node_->get_logger(), "on_init succeeded during setup");
+  }
 }
 
 void SwerveDriveControllerTest::SetUpInterfaces()
@@ -162,7 +186,7 @@ TEST_F(SwerveDriveControllerTest, test_on_init_success)
 
 TEST_F(SwerveDriveControllerTest, test_command_interface_configuration)
 {
-  SetUpController();
+  SetUpControllerWithInit();
   if (!init_successful_)
   {
     GTEST_SKIP() << "Skipping due to on_init failure";
@@ -179,7 +203,7 @@ TEST_F(SwerveDriveControllerTest, test_command_interface_configuration)
 
 TEST_F(SwerveDriveControllerTest, test_state_interface_configuration)
 {
-  SetUpController();
+  SetUpControllerWithInit();
   if (!init_successful_)
   {
     GTEST_SKIP() << "Skipping due to on_init failure";
@@ -196,7 +220,7 @@ TEST_F(SwerveDriveControllerTest, test_state_interface_configuration)
 
 TEST_F(SwerveDriveControllerTest, test_on_configure_success)
 {
-  SetUpController();
+  SetUpControllerWithInit();
   if (!init_successful_)
   {
     GTEST_SKIP() << "Skipping due to on_init failure";
@@ -208,7 +232,7 @@ TEST_F(SwerveDriveControllerTest, test_on_configure_success)
 
 TEST_F(SwerveDriveControllerTest, test_on_configure_missing_parameters)
 {
-  SetUpController();
+  SetUpControllerWithInit();
   if (!init_successful_)
   {
     GTEST_SKIP() << "Skipping due to on_init failure";
@@ -221,7 +245,7 @@ TEST_F(SwerveDriveControllerTest, test_on_configure_missing_parameters)
 
 TEST_F(SwerveDriveControllerTest, test_on_activate_success)
 {
-  SetUpController();
+  SetUpControllerWithInit();
   if (!init_successful_)
   {
     GTEST_SKIP() << "Skipping due to on_init failure";
@@ -237,7 +261,7 @@ TEST_F(SwerveDriveControllerTest, test_on_activate_success)
 
 TEST_F(SwerveDriveControllerTest, test_on_activate_missing_interfaces)
 {
-  SetUpController();
+  SetUpControllerWithInit();
   if (!init_successful_)
   {
     GTEST_SKIP() << "Skipping due to on_init failure";
@@ -252,7 +276,7 @@ TEST_F(SwerveDriveControllerTest, test_on_activate_missing_interfaces)
 
 TEST_F(SwerveDriveControllerTest, test_on_deactivate_success)
 {
-  SetUpController();
+  SetUpControllerWithInit();
   if (!init_successful_)
   {
     GTEST_SKIP() << "Skipping due to on_init failure";
@@ -271,7 +295,7 @@ TEST_F(SwerveDriveControllerTest, test_on_deactivate_success)
 
 TEST_F(SwerveDriveControllerTest, test_on_cleanup_success)
 {
-  SetUpController();
+  SetUpControllerWithInit();
   if (!init_successful_)
   {
     GTEST_SKIP() << "Skipping due to on_init failure";
@@ -286,7 +310,7 @@ TEST_F(SwerveDriveControllerTest, test_on_cleanup_success)
 
 TEST_F(SwerveDriveControllerTest, test_on_error_success)
 {
-  SetUpController();
+  SetUpControllerWithInit();
   if (!init_successful_)
   {
     GTEST_SKIP() << "Skipping due to on_init failure";
@@ -301,7 +325,7 @@ TEST_F(SwerveDriveControllerTest, test_on_error_success)
 
 TEST_F(SwerveDriveControllerTest, test_on_shutdown_success)
 {
-  SetUpController();
+  SetUpControllerWithInit();
   if (!init_successful_)
   {
     GTEST_SKIP() << "Skipping due to on_init failure";
@@ -313,7 +337,7 @@ TEST_F(SwerveDriveControllerTest, test_on_shutdown_success)
 
 TEST_F(SwerveDriveControllerTest, test_update_inactive_state)
 {
-  SetUpController();
+  SetUpControllerWithInit();
   if (!init_successful_)
   {
     GTEST_SKIP() << "Skipping due to on_init failure";
@@ -343,7 +367,7 @@ TEST_F(SwerveDriveControllerTest, test_update_inactive_state)
 
 TEST_F(SwerveDriveControllerTest, test_update_with_velocity_command)
 {
-  SetUpController();
+  SetUpControllerWithInit();
   if (!init_successful_)
   {
     GTEST_SKIP() << "Skipping due to on_init failure";
@@ -387,7 +411,7 @@ TEST_F(SwerveDriveControllerTest, test_update_with_velocity_command)
 
 TEST_F(SwerveDriveControllerTest, test_update_with_timeout)
 {
-  SetUpController();
+  SetUpControllerWithInit();
   if (!init_successful_)
   {
     GTEST_SKIP() << "Skipping due to on_init failure";
@@ -427,7 +451,7 @@ TEST_F(SwerveDriveControllerTest, test_update_with_timeout)
 
 TEST_F(SwerveDriveControllerTest, test_unstamped_velocity_command)
 {
-  SetUpController();
+  SetUpControllerWithInit();
   if (!init_successful_)
   {
     GTEST_SKIP() << "Skipping due to on_init failure";

@@ -69,10 +69,10 @@ void Axle::set_position(double position) { position_.get().set_value(position); 
 double Axle::get_feedback() { return Axle::feedback_.get().get_value(); }
 
 std::array<std::pair<double, double>, 4> wheel_positions_ = {{
-  {-0.1, 0.175},   // front left
-  {0.1, 0.175},    // front right
-  {-0.1, -0.175},  // rear left
-  {0.1, -0.175}    // rear right
+  {0.1, 0.175},   // front left
+  {0.1, -0.175},    // front right
+  {-0.1, 0.175},  // rear left
+  {-0.1, -0.175}    // rear right
 }};
 
 SwerveController::SwerveController()
