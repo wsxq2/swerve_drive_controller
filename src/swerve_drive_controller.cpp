@@ -15,9 +15,7 @@
 
 #include <cmath>
 #include <memory>
-#include <queue>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -137,54 +135,34 @@ CallbackReturn SwerveController::on_configure(const rclcpp_lifecycle::State & /*
 {
   try
   {
+    // Initialize covariance diagonals
     for (std::size_t i = 0; i < NUM_DIMENSIONS; ++i)
     {
       params_.pose_covariance_diagonal[i] = DEFAULT_COVARIANCE;
-    }
-    for (std::size_t i = 0; i < NUM_DIMENSIONS; ++i)
-    {
       params_.twist_covariance_diagonal[i] = DEFAULT_COVARIANCE;
     }
-    if (params_.front_left_wheel_joint.empty())
+
+    // Validate joint names
+    const std::array<std::pair<const std::string&, const char*>, 8> joint_checks {{
+      {params_.front_left_wheel_joint, "front_left_wheel_joint"},
+      {params_.front_right_wheel_joint, "front_right_wheel_joint"},
+      {params_.rear_left_wheel_joint, "rear_left_wheel_joint"},
+      {params_.rear_right_wheel_joint, "rear_right_wheel_joint"},
+      {params_.front_left_axle_joint, "front_left_axle_joint"},
+      {params_.front_right_axle_joint, "front_right_axle_joint"},
+      {params_.rear_left_axle_joint, "rear_left_axle_joint"},
+      {params_.rear_right_axle_joint, "rear_right_axle_joint"}
+    }};
+
+    for (const auto & [joint_name, param_name] : joint_checks)
     {
-      RCLCPP_ERROR(logger_, "front_left_wheel_joint_name is not set");
-      return CallbackReturn::ERROR;
+      if (joint_name.empty())
+      {
+        RCLCPP_ERROR(logger_, "%s is not set", param_name);
+        return CallbackReturn::ERROR;
+      }
     }
-    if (params_.front_right_wheel_joint.empty())
-    {
-      RCLCPP_ERROR(logger_, "front_right_wheel_joint_name is not set");
-      return CallbackReturn::ERROR;
-    }
-    if (params_.rear_left_wheel_joint.empty())
-    {
-      RCLCPP_ERROR(logger_, "rear_left_wheel_joint_name is not set");
-      return CallbackReturn::ERROR;
-    }
-    if (params_.rear_right_wheel_joint.empty())
-    {
-      RCLCPP_ERROR(logger_, "rear_right_wheel_joint_name is not set");
-      return CallbackReturn::ERROR;
-    }
-    if (params_.front_left_axle_joint.empty())
-    {
-      RCLCPP_ERROR(logger_, "front_left_axle_joint_name is not set");
-      return CallbackReturn::ERROR;
-    }
-    if (params_.front_right_axle_joint.empty())
-    {
-      RCLCPP_ERROR(logger_, "front_right_axle_joint_name is not set");
-      return CallbackReturn::ERROR;
-    }
-    if (params_.rear_left_axle_joint.empty())
-    {
-      RCLCPP_ERROR(logger_, "rear_left_axle_joint_name_ is not set");
-      return CallbackReturn::ERROR;
-    }
-    if (params_.rear_right_axle_joint.empty())
-    {
-      RCLCPP_ERROR(logger_, "rear_right_axle_joint_name_ is not set");
-      return CallbackReturn::ERROR;
-    }
+
     wheel_joint_names[0] = params_.front_left_wheel_joint;
     wheel_joint_names[1] = params_.front_right_wheel_joint;
     wheel_joint_names[2] = params_.rear_left_wheel_joint;

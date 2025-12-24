@@ -16,10 +16,9 @@
 
 #include "swerve_drive_controller/swerve_drive_kinematics.hpp"
 
+#include <array>
 #include <chrono>
-#include <cmath>
 #include <memory>
-#include <queue>
 #include <string>
 #include <vector>
 
@@ -27,11 +26,9 @@
 #include "controller_interface/controller_interface.hpp"
 #include "geometry_msgs/msg/twist.hpp"
 #include "geometry_msgs/msg/twist_stamped.hpp"
-#include "hardware_interface/handle.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_lifecycle/state.hpp"
-#include "realtime_tools/realtime_box.hpp"
 #include "realtime_tools/realtime_buffer.hpp"
 #include "realtime_tools/realtime_publisher.hpp"
 #include "tf2_msgs/msg/tf_message.hpp"
@@ -41,14 +38,6 @@
 
 namespace swerve_drive_controller
 {
-
-enum class WheelAxleIndex : std::size_t
-{
-  FRONT_LEFT = 0,
-  FRONT_RIGHT = 1,
-  REAR_LEFT = 2,
-  REAR_RIGHT = 3
-};
 
 using CallbackReturn = controller_interface::CallbackReturn;
 
@@ -125,7 +114,7 @@ protected:
   std::array<std::string, 4> wheel_joint_names{};
   std::array<std::string, 4> axle_joint_names{};
 
-  const double EPS = 1e-6;
+  static constexpr double EPS = 1e-6;
   std::array<double, 4> previous_steering_angles_{};
 
   rclcpp_lifecycle::LifecycleNode::SharedPtr node_;
@@ -150,7 +139,6 @@ protected:
     realtime_odometry_publisher_ = nullptr;
   std::shared_ptr<realtime_tools::RealtimePublisher<tf2_msgs::msg::TFMessage>>
     realtime_odometry_transform_publisher_ = nullptr;
-  tf2_msgs::msg::TFMessage odometry_transform_message_;
 
   void halt();
   std::shared_ptr<TwistStamped> createZeroVelocityCommand(const rclcpp::Time & stamp) const;
