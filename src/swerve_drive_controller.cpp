@@ -417,7 +417,7 @@ controller_interface::return_type SwerveController::update(
     }
     else
     {
-      velocity_array[i] = wheel_handles_[i]->get_feedback();
+      velocity_array[i] = wheel_handles_[i]->get_feedback() * params_.wheel_radius;
       steering_angle_array[i] = axle_handles_[i]->get_feedback();
     }
   }
