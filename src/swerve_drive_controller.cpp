@@ -15,6 +15,7 @@
 
 #include <cmath>
 #include <memory>
+#include <rclcpp/time.hpp>
 #include <string>
 #include <utility>
 #include <vector>
@@ -234,7 +235,6 @@ CallbackReturn SwerveController::on_configure(const rclcpp_lifecycle::State & /*
     auto & odometry_message = realtime_odometry_publisher_->msg_;
     odometry_message.header.frame_id = odom_frame_id;
     odometry_message.child_frame_id = base_frame_id;
-    publish_period_ = rclcpp::Duration::from_seconds(1.0 / params_.publishe_rate);
 
     odometry_message.twist =
       geometry_msgs::msg::TwistWithCovariance(rosidl_runtime_cpp::MessageInitialization::ALL);
@@ -256,8 +256,6 @@ CallbackReturn SwerveController::on_configure(const rclcpp_lifecycle::State & /*
     odometry_transform_message.transforms.resize(1);
     odometry_transform_message.transforms.front().header.frame_id = odom_frame_id;
     odometry_transform_message.transforms.front().child_frame_id = base_frame_id;
-
-    previous_update_timestamp_ = node_->get_clock()->now();
   }
   catch (const std::exception & e)
   {
@@ -298,7 +296,7 @@ CallbackReturn SwerveController::on_activate(const rclcpp_lifecycle::State &)
 }
 
 controller_interface::return_type SwerveController::update(
-  const rclcpp::Time & time, const rclcpp::Duration & /*period*/)
+  const rclcpp::Time & time, const rclcpp::Duration & period)
 {
   if (this->get_state().id() == State::PRIMARY_STATE_INACTIVE)
   {
@@ -406,10 +404,7 @@ controller_interface::return_type SwerveController::update(
     wheel_handles_[i]->set_velocity(wheel_command[i].drive_angular_velocity);
   }
 
-  const auto update_dt = time - previous_update_timestamp_;
-  previous_update_timestamp_ = time;
-
-  // update odometry
+  // update odometry using period from controller manager
   swerve_drive_controller::OdometryState odometry_;
   std::array<double, NUM_WHEELS> velocity_array{};
   std::array<double, NUM_WHEELS> steering_angle_array{};
@@ -427,43 +422,37 @@ controller_interface::return_type SwerveController::update(
     }
   }
   odometry_ = swerveDriveKinematics_.update_odometry(
-    velocity_array, steering_angle_array, update_dt.seconds());
+    velocity_array, steering_angle_array, period.seconds());
   tf2::Quaternion orientation;
   orientation.setRPY(0.0, 0.0, odometry_.theta);
 
-  // Publish odometry at the configured rate
-  const bool should_publish = (time - previous_publish_timestamp_) >= publish_period_;
+  // Publish odometry (frequency controlled by controller manager)
+  if (realtime_odometry_publisher_->trylock()) {
+    auto & odometry_message = realtime_odometry_publisher_->msg_;
+    odometry_message.header.stamp = time;
+    odometry_message.pose.pose.position.x = odometry_.x;
+    odometry_message.pose.pose.position.y = odometry_.y;
+    odometry_message.pose.pose.orientation.x = orientation.x();
+    odometry_message.pose.pose.orientation.y = orientation.y();
+    odometry_message.pose.pose.orientation.z = orientation.z();
+    odometry_message.pose.pose.orientation.w = orientation.w();
+    odometry_message.twist.twist.linear.x = odometry_.vx;
+    odometry_message.twist.twist.linear.y = odometry_.vy;
+    odometry_message.twist.twist.angular.z = odometry_.wz;
+    realtime_odometry_publisher_->unlockAndPublish();
+  }
 
-  if (should_publish) {
-    if (realtime_odometry_publisher_->trylock()) {
-      auto & odometry_message = realtime_odometry_publisher_->msg_;
-      odometry_message.header.stamp = time;
-      odometry_message.pose.pose.position.x = odometry_.x;
-      odometry_message.pose.pose.position.y = odometry_.y;
-      odometry_message.pose.pose.orientation.x = orientation.x();
-      odometry_message.pose.pose.orientation.y = orientation.y();
-      odometry_message.pose.pose.orientation.z = orientation.z();
-      odometry_message.pose.pose.orientation.w = orientation.w();
-      odometry_message.twist.twist.linear.x = odometry_.vx;
-      odometry_message.twist.twist.linear.y = odometry_.vy;
-      odometry_message.twist.twist.angular.z = odometry_.wz;
-      realtime_odometry_publisher_->unlockAndPublish();
-    }
-
-    if (params_.enable_odom_tf && realtime_odometry_transform_publisher_->trylock()) {
-      auto & transform = realtime_odometry_transform_publisher_->msg_.transforms.front();
-      transform.header.stamp = time;
-      transform.transform.translation.x = odometry_.x;
-      transform.transform.translation.y = odometry_.y;
-      transform.transform.translation.z = 0.0;
-      transform.transform.rotation.x = orientation.x();
-      transform.transform.rotation.y = orientation.y();
-      transform.transform.rotation.z = orientation.z();
-      transform.transform.rotation.w = orientation.w();
-      realtime_odometry_transform_publisher_->unlockAndPublish();
-    }
-    // Update timestamp after successful publish
-    previous_publish_timestamp_ = time;
+  if (params_.enable_odom_tf && realtime_odometry_transform_publisher_->trylock()) {
+    auto & transform = realtime_odometry_transform_publisher_->msg_.transforms.front();
+    transform.header.stamp = time;
+    transform.transform.translation.x = odometry_.x;
+    transform.transform.translation.y = odometry_.y;
+    transform.transform.translation.z = 0.0;
+    transform.transform.rotation.x = orientation.x();
+    transform.transform.rotation.y = orientation.y();
+    transform.transform.rotation.z = orientation.z();
+    transform.transform.rotation.w = orientation.w();
+    realtime_odometry_transform_publisher_->unlockAndPublish();
   }
 
   return controller_interface::return_type::OK;

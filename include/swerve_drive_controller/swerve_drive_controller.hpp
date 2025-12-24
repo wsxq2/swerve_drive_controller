@@ -124,12 +124,9 @@ protected:
   Params params_;
 
   SwerveDriveKinematics swerveDriveKinematics_;
-  rclcpp::Duration publish_period_ = rclcpp::Duration::from_nanoseconds(0);
-  rclcpp::Time previous_publish_timestamp_{0, 0, RCL_CLOCK_UNINITIALIZED};
 
   // Timeout to consider cmd_vel commands old
   std::chrono::milliseconds cmd_vel_timeout_{500};
-  rclcpp::Time previous_update_timestamp_{0};
 
   // Topic Subscription
   rclcpp::Subscription<TwistStamped>::SharedPtr velocity_command_subscriber_ = nullptr;
