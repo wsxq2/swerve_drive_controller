@@ -125,19 +125,16 @@ protected:
   std::array<std::string, 4> wheel_joint_names{};
   std::array<std::string, 4> axle_joint_names{};
 
+  const double EPS = 1e-6;
+  std::array<double, 4> previous_steering_angles_{};
+
+  rclcpp_lifecycle::LifecycleNode::SharedPtr node_;
+  rclcpp::Logger logger_{rclcpp::get_logger("SwerveController")};
+
   std::shared_ptr<ParamListener> param_listener_;
   Params params_;
 
-  struct WheelParams
-  {
-    double x_offset = 0.0;  // Chassis Center to Axle Center
-    double y_offset = 0.0;  // Axle Center to Wheel Center
-    double radius = 0.0;    // Assumed to be the same for all wheels
-    double center_of_rotation = 0.0;
-  } wheel_params_;
-
   SwerveDriveKinematics swerveDriveKinematics_;
-  std::queue<TwistStamped> previous_commands_;  // last two commands
   rclcpp::Duration publish_period_ = rclcpp::Duration::from_nanoseconds(0);
   rclcpp::Time previous_publish_timestamp_{0, 0, RCL_CLOCK_UNINITIALIZED};
 
@@ -146,21 +143,17 @@ protected:
   rclcpp::Time previous_update_timestamp_{0};
 
   // Topic Subscription
-  bool subscriber_is_active_ = false;
   rclcpp::Subscription<TwistStamped>::SharedPtr velocity_command_subscriber_ = nullptr;
   rclcpp::Subscription<Twist>::SharedPtr velocity_command_unstamped_subscriber_ = nullptr;
   realtime_tools::RealtimeBuffer<std::shared_ptr<TwistStamped>> received_velocity_msg_ptr_{nullptr};
-  std::shared_ptr<rclcpp::Publisher<nav_msgs::msg::Odometry>> odometry_publisher_ = nullptr;
   std::shared_ptr<realtime_tools::RealtimePublisher<nav_msgs::msg::Odometry>>
     realtime_odometry_publisher_ = nullptr;
-  std::shared_ptr<rclcpp::Publisher<tf2_msgs::msg::TFMessage>> odometry_transform_publisher_ =
-    nullptr;
   std::shared_ptr<realtime_tools::RealtimePublisher<tf2_msgs::msg::TFMessage>>
     realtime_odometry_transform_publisher_ = nullptr;
+  tf2_msgs::msg::TFMessage odometry_transform_message_;
 
-  bool is_halted_ = false;
-  bool reset();
   void halt();
+  std::shared_ptr<TwistStamped> createZeroVelocityCommand(const rclcpp::Time & stamp) const;
 };
 
 }  // namespace swerve_drive_controller

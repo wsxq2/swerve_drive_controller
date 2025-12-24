@@ -16,10 +16,21 @@
 namespace swerve_drive_controller
 {
 
-SwerveDriveKinematics::SwerveDriveKinematics(
-  const std::array<std::pair<double, double>, 4> & wheel_positions)
-: wheel_positions_(wheel_positions), odometry_{0.0, 0.0, 0.0}
+SwerveDriveKinematics::SwerveDriveKinematics() : odometry_{0.0, 0.0, 0.0, 0.0, 0.0, 0.0} {}
+
+void SwerveDriveKinematics::configure(
+  double wheel_base, double track_width, double wheel_radius,
+  double x_offset, double y_offset)
 {
+  double half_length = wheel_base / 2.0;
+  double half_width = track_width / 2.0;
+
+  wheel_positions_[0] = {half_length - x_offset, half_width - y_offset};    // Front Left  (+x, +y)
+  wheel_positions_[1] = {half_length - x_offset, -half_width - y_offset};   // Front Right (+x, -y)
+  wheel_positions_[2] = {-half_length - x_offset, half_width - y_offset};   // Rear Left   (-x, +y)
+  wheel_positions_[3] = {-half_length - x_offset, -half_width - y_offset};  // Rear Right  (-x, -y)
+
+  wheel_radius_ = wheel_radius;
 }
 
 std::array<WheelCommand, 4> SwerveDriveKinematics::compute_wheel_commands(
@@ -27,7 +38,11 @@ std::array<WheelCommand, 4> SwerveDriveKinematics::compute_wheel_commands(
 {
   std::array<WheelCommand, 4> wheel_commands;
 
-  // wx = W/2, wy = L/2
+  if (wheel_radius_ <= 0.0)
+  {
+    std::cerr << "invalid wheel_radius_ <= 0.0\n";
+    // fallthrough: compute but set angular velocities to 0 to avoid div-by-zero
+  }
 
   for (std::size_t i = 0; i < 4; i++)
   {
@@ -36,11 +51,46 @@ std::array<WheelCommand, 4> SwerveDriveKinematics::compute_wheel_commands(
     double vx = linear_velocity_x - angular_velocity_z * wy;
     double vy = linear_velocity_y + angular_velocity_z * wx;
 
-    wheel_commands[i].drive_velocity = std::hypot(vx, vy);
-    wheel_commands[i].steering_angle = std::atan2(vy, vx);
+    double linear_speed = std::hypot(vx, vy);
+    double steering = std::atan2(vy, vx);
+
+    if (wheel_radius_ > 0.0)
+    {
+      wheel_commands[i].drive_angular_velocity = linear_speed / wheel_radius_;  // rad/s
+    }
+    else
+    {
+      wheel_commands[i].drive_angular_velocity = 0.0;  // safe fallback
+    }
+
+    wheel_commands[i].steering_angle = steering;
   }
 
   return wheel_commands;
+}
+
+std::array<WheelCommand, 4> SwerveDriveKinematics::optimize_wheel_commands(
+  const std::array<WheelCommand, 4> & wheel_commands,
+  const std::array<double, 4> & current_steering_angles)
+{
+  std::array<WheelCommand, 4> optimized_commands = wheel_commands;
+
+  for (std::size_t i = 0; i < 4; i++)
+  {
+    double target_angle = wheel_commands[i].steering_angle;
+    double current_angle = current_steering_angles[i];
+
+    double angle_diff = angles::shortest_angular_distance(current_angle, target_angle);
+
+    if (std::abs(angle_diff) > M_PI_2)
+    {
+      optimized_commands[i].drive_angular_velocity = -wheel_commands[i].drive_angular_velocity;
+
+      optimized_commands[i].steering_angle = angles::normalize_angle(target_angle + M_PI);
+    }
+  }
+
+  return optimized_commands;
 }
 
 OdometryState SwerveDriveKinematics::update_odometry(
@@ -83,20 +133,10 @@ OdometryState SwerveDriveKinematics::update_odometry(
   // Integrate to compute new position and orientation
   odometry_.x += vx_global * dt;
   odometry_.y += vy_global * dt;
-  odometry_.theta = normalize_angle(odometry_.theta + wz_robot * dt);
+  odometry_.theta = angles::normalize_angle(odometry_.theta + wz_robot * dt);
+  odometry_.vx = vx_robot;
+  odometry_.vy = vy_robot;
+  odometry_.wz = wz_robot;
   return odometry_;
-}
-
-double SwerveDriveKinematics::normalize_angle(double angle)
-{
-  while (angle > M_PI)
-  {
-    angle -= 2.0 * M_PI;
-  }
-  while (angle < -M_PI)
-  {
-    angle += 2.0 * M_PI;
-  }
-  return angle;
 }
 }  // namespace swerve_drive_controller

@@ -14,6 +14,7 @@
 #ifndef SWERVE_DRIVE_CONTROLLER__SWERVE_DRIVE_KINEMATICS_HPP_
 #define SWERVE_DRIVE_CONTROLLER__SWERVE_DRIVE_KINEMATICS_HPP_
 
+#include <angles/angles.h>
 #include <array>
 #include <cmath>
 #include <iostream>
@@ -34,8 +35,8 @@ namespace swerve_drive_controller
 
 struct WheelCommand
 {
-  double steering_angle;  // Steering angle in radians
-  double drive_velocity;  // Drive velocity in meters per second
+  double steering_angle;          // Steering angle in radians
+  double drive_angular_velocity;  // Drive angular velocity in radians per second (rad/s)
 };
 
 /**
@@ -47,27 +48,52 @@ struct OdometryState
   double x;      // X position in meters
   double y;      // Y position in meters
   double theta;  // Orientation (yaw) in radians
+  double vx;     // Linear velocity in the x direction (m/s)
+  double vy;     // Linear velocity in the y direction (m/s)
+  double wz;     // Angular velocity about the z-axis (rad/s)
 };
 
 class SwerveDriveKinematics
 {
 public:
-  /**
-   * @brief Constructor for the kinematics solver.
-   * @param wheel_positions Array of (x, y) positions of the wheels relative to the robot's center.
-   */
+  /// @brief Default Constructor
+  SwerveDriveKinematics();
 
-  explicit SwerveDriveKinematics(const std::array<std::pair<double, double>, 4> & wheel_positions);
+  /**
+   * @brief Configure the swerve drive kinematics with all necessary parameters.
+   * @param wheel_base Distance between front and rear axles (meters).
+   * @param track_width Distance between left and right wheels (meters).
+   * @param wheel_radius Radius of the wheel (meters). Same radius used for all wheels.
+   * @param x_offset Optional global x offset of wheel positions.
+   * @param y_offset Optional global y offset of wheel positions.
+   * @attention wheel order enforced as: front_left, front_right, rear_left, rear_right
+   */
+  void configure(
+    double wheel_base, double track_width, double wheel_radius, 
+    double x_offset = 0.0, double y_offset = 0.0);
+
   /**
    * @brief Compute the wheel commands based on robot velocity commands.
    * @param linear_velocity_x Linear velocity in the x direction (m/s).
    * @param linear_velocity_y Linear velocity in the y direction (m/s).
    * @param angular_velocity_z Angular velocity about the z-axis (rad/s).
-   * @return Array of wheel commands (steering angles and drive velocities).
+   * @return Array of wheel commands (steering angles, drive linear velocities (m/s),
+   *         and drive angular velocities (rad/s)).
    */
-
   std::array<WheelCommand, 4> compute_wheel_commands(
     double linear_velocity_x, double linear_velocity_y, double angular_velocity_z);
+
+  /**
+   * @brief Optimize wheel commands to minimize steering rotation.
+   * If a wheel needs to rotate more than 90 degrees, flip the wheel velocity
+   * and adjust the steering angle by 180 degrees instead.
+   * @param wheel_commands The computed wheel commands.
+   * @param current_steering_angles Array of current steering angles (radians).
+   * @return Optimized wheel commands with minimal steering rotation.
+   */
+  std::array<WheelCommand, 4> optimize_wheel_commands(
+    const std::array<WheelCommand, 4> & wheel_commands,
+    const std::array<double, 4> & current_steering_angles);
 
   /**
    * @brief Update the odometry based on wheel velocities and elapsed time.
@@ -84,14 +110,7 @@ public:
 private:
   std::array<std::pair<double, double>, 4> wheel_positions_;  // Wheel Positions
   OdometryState odometry_;                                    // Current Odometry of the robot
-
-  /**
-   * @brief Normalize an angle to the range [-pi, pi].
-   * @param angle input in radians.
-   * @return Normalized angle in radians.
-   */
-
-  double normalize_angle(double angle);
+  double wheel_radius_{0.0};                                  // Wheel radius in meters
 };
 }  // namespace swerve_drive_controller
 

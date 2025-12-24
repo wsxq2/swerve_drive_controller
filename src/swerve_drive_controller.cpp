@@ -46,6 +46,11 @@ using hardware_interface::HW_IF_POSITION;
 using hardware_interface::HW_IF_VELOCITY;
 using lifecycle_msgs::msg::State;
 
+constexpr std::size_t NUM_WHEELS = 4;
+constexpr std::size_t NUM_DIMENSIONS = 6;
+constexpr double DEFAULT_COVARIANCE = 0.01;
+constexpr double SECONDS_TO_MILLISECONDS = 1000.0;
+
 Wheel::Wheel(
   std::reference_wrapper<hardware_interface::LoanedCommandInterface> velocity,
   std::reference_wrapper<const hardware_interface::LoanedStateInterface> feedback, std::string name)
@@ -68,37 +73,29 @@ void Axle::set_position(double position) { position_.get().set_value(position); 
 
 double Axle::get_feedback() { return Axle::feedback_.get().get_value(); }
 
-std::array<std::pair<double, double>, 4> wheel_positions_ = {{
-  {0.1, 0.175},   // front left
-  {0.1, -0.175},    // front right
-  {-0.1, 0.175},  // rear left
-  {-0.1, -0.175}    // rear right
-}};
-
 SwerveController::SwerveController()
-: controller_interface::ControllerInterface(), swerveDriveKinematics_(wheel_positions_)
+: controller_interface::ControllerInterface(), swerveDriveKinematics_()
 {
-  auto zero_twist = std::make_shared<TwistStamped>();
-  zero_twist->header.stamp = rclcpp::Time(0);
-  zero_twist->twist.linear.x = 0.0;
-  zero_twist->twist.linear.y = 0.0;
-  zero_twist->twist.angular.z = 0.0;
-  received_velocity_msg_ptr_.writeFromNonRT(zero_twist);
 }
 
 CallbackReturn SwerveController::on_init()
 {
-  auto node = get_node();
-  if (!node)
+  node_ = get_node();
+  if (!node_)
   {
-    RCLCPP_ERROR(rclcpp::get_logger("SwerveController"), "Node is null in on_init");
+    RCLCPP_ERROR(logger_, "Node is null in on_init");
     return controller_interface::CallbackReturn::ERROR;
   }
+  logger_ = node_->get_logger();
   try
   {
     // Create the parameter listener and get the parameters
-    param_listener_ = std::make_shared<ParamListener>(get_node());
+    param_listener_ = std::make_shared<ParamListener>(node_);
     params_ = param_listener_->get_params();
+
+    swerveDriveKinematics_.configure(
+      params_.wheelbase, params_.trackwidth, params_.wheel_radius,
+      params_.offset[0], params_.offset[1]);
   }
   catch (const std::exception & e)
   {
@@ -138,61 +135,54 @@ InterfaceConfiguration SwerveController::state_interface_configuration() const
 
 CallbackReturn SwerveController::on_configure(const rclcpp_lifecycle::State & /*previous_state*/)
 {
-  auto logger = rclcpp::get_logger("SwerveController");
   try
   {
-    wheel_params_.x_offset = params_.chassis_length;
-    wheel_params_.y_offset = params_.chassis_width;
-    wheel_params_.radius = params_.wheel_radius;
-    wheel_params_.center_of_rotation = params_.center_of_rotation;
-    for (std::size_t i = 0; i < 6; ++i)
+    for (std::size_t i = 0; i < NUM_DIMENSIONS; ++i)
     {
-      params_.pose_covariance_diagonal[i] = 0.01;
+      params_.pose_covariance_diagonal[i] = DEFAULT_COVARIANCE;
     }
-
-    for (std::size_t i = 0; i < 6; ++i)
+    for (std::size_t i = 0; i < NUM_DIMENSIONS; ++i)
     {
-      params_.twist_covariance_diagonal[i] = 0.01;
+      params_.twist_covariance_diagonal[i] = DEFAULT_COVARIANCE;
     }
-
     if (params_.front_left_wheel_joint.empty())
     {
-      RCLCPP_ERROR(logger, "front_left_wheel_joint_name is not set");
+      RCLCPP_ERROR(logger_, "front_left_wheel_joint_name is not set");
       return CallbackReturn::ERROR;
     }
     if (params_.front_right_wheel_joint.empty())
     {
-      RCLCPP_ERROR(logger, "front_right_wheel_joint_name is not set");
+      RCLCPP_ERROR(logger_, "front_right_wheel_joint_name is not set");
       return CallbackReturn::ERROR;
     }
     if (params_.rear_left_wheel_joint.empty())
     {
-      RCLCPP_ERROR(logger, "rear_left_wheel_joint_name is not set");
+      RCLCPP_ERROR(logger_, "rear_left_wheel_joint_name is not set");
       return CallbackReturn::ERROR;
     }
     if (params_.rear_right_wheel_joint.empty())
     {
-      RCLCPP_ERROR(logger, "rear_right_wheel_joint_name is not set");
+      RCLCPP_ERROR(logger_, "rear_right_wheel_joint_name is not set");
       return CallbackReturn::ERROR;
     }
     if (params_.front_left_axle_joint.empty())
     {
-      RCLCPP_ERROR(logger, "front_left_axle_joint_name is not set");
+      RCLCPP_ERROR(logger_, "front_left_axle_joint_name is not set");
       return CallbackReturn::ERROR;
     }
     if (params_.front_right_axle_joint.empty())
     {
-      RCLCPP_ERROR(logger, "front_right_axle_joint_name is not set");
+      RCLCPP_ERROR(logger_, "front_right_axle_joint_name is not set");
       return CallbackReturn::ERROR;
     }
     if (params_.rear_left_axle_joint.empty())
     {
-      RCLCPP_ERROR(logger, "rear_left_axle_joint_name_ is not set");
+      RCLCPP_ERROR(logger_, "rear_left_axle_joint_name_ is not set");
       return CallbackReturn::ERROR;
     }
     if (params_.rear_right_axle_joint.empty())
     {
-      RCLCPP_ERROR(logger, "rear_right_axle_joint_name_ is not set");
+      RCLCPP_ERROR(logger_, "rear_right_axle_joint_name_ is not set");
       return CallbackReturn::ERROR;
     }
     wheel_joint_names[0] = params_.front_left_wheel_joint;
@@ -204,69 +194,54 @@ CallbackReturn SwerveController::on_configure(const rclcpp_lifecycle::State & /*
     axle_joint_names[2] = params_.rear_left_axle_joint;
     axle_joint_names[3] = params_.rear_right_axle_joint;
     cmd_vel_timeout_ =
-      std::chrono::milliseconds(static_cast<int>(params_.cmd_vel_timeout * 1000.0));
-    if (!reset())
-    {
-      return CallbackReturn::ERROR;
-    }
+      std::chrono::milliseconds(static_cast<int>(params_.cmd_vel_timeout * SECONDS_TO_MILLISECONDS));
 
-    TwistStamped empty_twist;
-    empty_twist.header.stamp = get_node()->now();
-    empty_twist.twist.linear.x = 0.0;
-    empty_twist.twist.linear.y = 0.0;
-    empty_twist.twist.angular.z = 0.0;
-    received_velocity_msg_ptr_.writeFromNonRT(std::make_shared<TwistStamped>(empty_twist));
+    // Initialize with zero velocity command
+    auto zero_cmd = createZeroVelocityCommand(node_->get_clock()->now());
+    received_velocity_msg_ptr_.writeFromNonRT(zero_cmd);
 
     if (params_.use_stamped_vel)
     {
-      velocity_command_subscriber_ = get_node()->create_subscription<TwistStamped>(
+      velocity_command_subscriber_ = node_->create_subscription<TwistStamped>(
         DEFAULT_COMMAND_TOPIC, rclcpp::SystemDefaultsQoS(),
-        [this, logger](const std::shared_ptr<TwistStamped> msg) -> void
+        [this](const std::shared_ptr<TwistStamped> msg) -> void
         {
-          if (!subscriber_is_active_)
-          {
-            RCLCPP_WARN(logger, "Can't accept new commands. subscriber is inactive");
-            return;
-          }
           if ((msg->header.stamp.sec == 0) && (msg->header.stamp.nanosec == 0))
           {
             RCLCPP_WARN_ONCE(
-              logger,
+              logger_,
               "Received TwistStamped with zero timestamp, setting it to current "
               "time, this message will only be shown once");
-            msg->header.stamp = get_node()->get_clock()->now();
+            msg->header.stamp = node_->get_clock()->now();
           }
           received_velocity_msg_ptr_.writeFromNonRT(std::move(msg));
         });
     }
     else
     {
-      velocity_command_unstamped_subscriber_ = get_node()->create_subscription<Twist>(
+      velocity_command_unstamped_subscriber_ = node_->create_subscription<Twist>(
         DEFAULT_COMMAND_UNSTAMPED_TOPIC, rclcpp::SystemDefaultsQoS(),
-        [this, logger](const std::shared_ptr<Twist> msg) -> void
+        [this](const std::shared_ptr<Twist> msg) -> void
         {
-          if (!subscriber_is_active_)
-          {
-            RCLCPP_WARN(logger, "Can't accept new commands. subscriber is inactive");
-            return;
-          }
           // Write fake header in the stored stamped command
           const std::shared_ptr<TwistStamped> twist_stamped =
             *(received_velocity_msg_ptr_.readFromRT());
           twist_stamped->twist = *msg;
-          twist_stamped->header.stamp = get_node()->get_clock()->now();
+          twist_stamped->header.stamp = node_->get_clock()->now();
+          twist_stamped->header.frame_id = params_.base_footprint;
+          received_velocity_msg_ptr_.writeFromNonRT(twist_stamped);
         });
     }
 
-    odometry_publisher_ = get_node()->create_publisher<nav_msgs::msg::Odometry>(
+    auto odometry_publisher = node_->create_publisher<nav_msgs::msg::Odometry>(
       DEFAULT_ODOMETRY_TOPIC, rclcpp::SystemDefaultsQoS());
 
     realtime_odometry_publisher_ =
       std::make_shared<realtime_tools::RealtimePublisher<nav_msgs::msg::Odometry>>(
-        odometry_publisher_);
+        odometry_publisher);
 
     std::string tf_prefix = "";
-    tf_prefix = std::string(get_node()->get_namespace());
+    tf_prefix = std::string(node_->get_namespace());
     if (tf_prefix == "/")
     {
       tf_prefix = "";
@@ -286,30 +261,29 @@ CallbackReturn SwerveController::on_configure(const rclcpp_lifecycle::State & /*
     odometry_message.twist =
       geometry_msgs::msg::TwistWithCovariance(rosidl_runtime_cpp::MessageInitialization::ALL);
 
-    constexpr std::size_t NUM_DIMENSIONS = 6;
-    for (std::size_t index = 0; index < 6; ++index)
+    for (std::size_t index = 0; index < NUM_DIMENSIONS; ++index)
     {
       const std::size_t diagonal_index = NUM_DIMENSIONS * index + index;
       odometry_message.pose.covariance[diagonal_index] = params_.pose_covariance_diagonal[index];
       odometry_message.twist.covariance[diagonal_index] = params_.twist_covariance_diagonal[index];
     }
-    odometry_transform_publisher_ = get_node()->create_publisher<tf2_msgs::msg::TFMessage>(
+    auto odometry_transform_publisher = node_->create_publisher<tf2_msgs::msg::TFMessage>(
       DEFAULT_TRANSFORM_TOPIC, rclcpp::SystemDefaultsQoS());
 
     realtime_odometry_transform_publisher_ =
       std::make_shared<realtime_tools::RealtimePublisher<tf2_msgs::msg::TFMessage>>(
-        odometry_transform_publisher_);
+        odometry_transform_publisher);
 
     auto & odometry_transform_message = realtime_odometry_transform_publisher_->msg_;
     odometry_transform_message.transforms.resize(1);
     odometry_transform_message.transforms.front().header.frame_id = odom_frame_id;
     odometry_transform_message.transforms.front().child_frame_id = base_frame_id;
 
-    previous_update_timestamp_ = get_node()->get_clock()->now();
+    previous_update_timestamp_ = node_->get_clock()->now();
   }
   catch (const std::exception & e)
   {
-    RCLCPP_ERROR(logger, "EXCEPTION DURING on_configure: %s", e.what());
+    RCLCPP_ERROR(logger_, "EXCEPTION DURING on_configure: %s", e.what());
     return CallbackReturn::ERROR;
   }
 
@@ -318,73 +292,50 @@ CallbackReturn SwerveController::on_configure(const rclcpp_lifecycle::State & /*
 
 CallbackReturn SwerveController::on_activate(const rclcpp_lifecycle::State &)
 {
-  auto logger = rclcpp::get_logger("SwerveController");
+  wheel_handles_.resize(NUM_WHEELS);
+  axle_handles_.resize(NUM_WHEELS);
 
-  wheel_handles_.resize(4);
-  for (std::size_t i = 0; i < 4; i++)
+  for (std::size_t i = 0; i < NUM_WHEELS; i++)
   {
     wheel_handles_[i] = get_wheel(wheel_joint_names[i]);
-  }
-
-  axle_handles_.resize(4);
-  for (std::size_t i = 0; i < 4; i++)
-  {
-    axle_handles_[i] = get_axle(axle_joint_names[i]);
-  }
-
-  for (std::size_t i = 0; i < wheel_handles_.size(); ++i)
-  {
     if (!wheel_handles_[i])
     {
-      RCLCPP_ERROR(logger, "ERROR IN FETCHING wheel handle for: %s", wheel_joint_names[i].c_str());
+      RCLCPP_ERROR(logger_, "ERROR IN FETCHING wheel handle for: %s", wheel_joint_names[i].c_str());
       return CallbackReturn::ERROR;
     }
     wheel_handles_[i]->set_velocity(0.0);
-  }
 
-  for (std::size_t i = 0; i < axle_handles_.size(); ++i)
-  {
+    axle_handles_[i] = get_axle(axle_joint_names[i]);
     if (!axle_handles_[i])
     {
-      RCLCPP_ERROR(logger, "ERROR IN FETCHING axle handle for: %s", axle_joint_names[i].c_str());
+      RCLCPP_ERROR(logger_, "ERROR IN FETCHING axle handle for: %s", axle_joint_names[i].c_str());
       return CallbackReturn::ERROR;
     }
     axle_handles_[i]->set_position(0.0);
+    previous_steering_angles_[i] = axle_handles_[i]->get_feedback();
   }
 
-  is_halted_ = false;
-  subscriber_is_active_ = true;
-  RCLCPP_INFO(logger, "Subscriber and publisher are now active.");
+  RCLCPP_INFO(logger_, "Subscriber and publisher are now active.");
   return CallbackReturn::SUCCESS;
 }
 
 controller_interface::return_type SwerveController::update(
-  const rclcpp::Time & time, const rclcpp::Duration & period)
+  const rclcpp::Time & time, const rclcpp::Duration & /*period*/)
 {
-  auto logger = rclcpp::get_logger("SwerveController");
-
   if (this->get_state().id() == State::PRIMARY_STATE_INACTIVE)
   {
-    if (!is_halted_)
-    {
-      halt();
-      is_halted_ = true;
-    }
-
+    halt();
     return controller_interface::return_type::OK;
   }
 
   const auto current_time = time;
 
-  std::shared_ptr<TwistStamped> last_command_msg = *(received_velocity_msg_ptr_.readFromRT());
+  auto last_command_msg = *(received_velocity_msg_ptr_.readFromRT());
 
   if (last_command_msg == nullptr)
   {
-    last_command_msg = std::make_shared<TwistStamped>();
-    last_command_msg->header.stamp = current_time;
-    last_command_msg->twist.linear.x = 0.0;
-    last_command_msg->twist.linear.y = 0.0;
-    last_command_msg->twist.angular.z = 0.0;
+    RCLCPP_WARN(logger_, "last_command_msg is nullptr, which is not expected. Creating zero velocity command.");
+    last_command_msg = createZeroVelocityCommand(current_time);
     received_velocity_msg_ptr_.writeFromNonRT(last_command_msg);
   }
 
@@ -397,56 +348,98 @@ controller_interface::return_type SwerveController::update(
     last_command_msg->twist.angular.z = 0.0;
   }
 
-  TwistStamped command = *last_command_msg;
-  double & linear_x_cmd = command.twist.linear.x;
-  double & linear_y_cmd = command.twist.linear.y;
-  double & angular_cmd = command.twist.angular.z;
-  double x_offset = wheel_params_.x_offset;
-  double y_offset = wheel_params_.y_offset;
-  double radius = wheel_params_.radius;
+  auto wheel_command = swerveDriveKinematics_.compute_wheel_commands(
+    last_command_msg->twist.linear.x, last_command_msg->twist.linear.y,
+    last_command_msg->twist.angular.z);
 
-  auto wheel_command =
-    swerveDriveKinematics_.compute_wheel_commands(linear_x_cmd, linear_y_cmd, angular_cmd);
-
-  std::vector<std::tuple<WheelCommand &, double, std::string>> wheel_data = {
-    {wheel_command[0], params_.front_left_velocity_threshold, "front_left_wheel"},
-    {wheel_command[1], params_.front_right_velocity_threshold, "front_right_wheel"},
-    {wheel_command[2], params_.rear_left_velocity_threshold, "rear_left_wheel"},
-    {wheel_command[3], params_.rear_right_velocity_threshold, "rear_right_wheel"}};
-
-  for (const auto & [wheel_command_, threshold, label] : wheel_data)
+  std::array<double, NUM_WHEELS> current_steering_angles{};
+  for (std::size_t i = 0; i < NUM_WHEELS; ++i)
   {
-    if (wheel_command_.drive_velocity > threshold)
+    current_steering_angles[i] = axle_handles_[i]->get_feedback();
+  }
+
+  wheel_command =
+    swerveDriveKinematics_.optimize_wheel_commands(wheel_command, current_steering_angles);
+
+  // Apply angular velocity thresholds (convert linear velocity thresholds to angular)
+  const std::array<double, NUM_WHEELS> angular_velocity_thresholds {{
+    params_.front_left_velocity_threshold / params_.wheel_radius,
+    params_.front_right_velocity_threshold / params_.wheel_radius,
+    params_.rear_left_velocity_threshold / params_.wheel_radius,
+    params_.rear_right_velocity_threshold / params_.wheel_radius
+  }};
+
+  for (std::size_t i = 0; i < NUM_WHEELS; ++i)
+  {
+    if (wheel_command[i].drive_angular_velocity > angular_velocity_thresholds[i])
     {
-      wheel_command_.drive_velocity = threshold;
+      wheel_command[i].drive_angular_velocity = angular_velocity_thresholds[i];
     }
   }
 
-  for (std::size_t i = 0; i < 4; i++)
+  // Apply velocity scaling based on steering error to prevent motion when wheels are misaligned
+  constexpr double min_steering_error = M_PI / 6.0;  // 30 degrees - no scaling below this
+  constexpr double max_steering_error = 1.5608;      // ~89.5 degrees - minimum velocity above this
+  const double cos_min_error = std::cos(min_steering_error);
+
+  for (std::size_t i = 0; i < NUM_WHEELS; i++)
   {
-    if (!axle_handles_[i] || !wheel_handles_[i])
+    const double steering_error = std::abs(
+      angles::shortest_angular_distance(
+        current_steering_angles[i], wheel_command[i].steering_angle));
+
+    double velocity_scale = 1.0;
+    if (steering_error > min_steering_error)
     {
-      throw std::runtime_error(
-        "Axle or Wheel handle is nullptr for: " + axle_joint_names[i] + " / " +
-        wheel_joint_names[i]);
+      if (steering_error >= max_steering_error)
+      {
+        // Use minimum velocity (1%) when nearly perpendicular to avoid division by near-zero
+        velocity_scale = 0.01 / cos_min_error;
+      }
+      else
+      {
+        // Cosine-based smooth scaling: 100% at 30°, ~58% at 60°, ~1% at 89.5°
+        velocity_scale = std::cos(steering_error) / cos_min_error;
+      }
     }
-    axle_handles_[i]->set_position(wheel_command[i].steering_angle);
-    wheel_handles_[i]->set_velocity(wheel_command[i].drive_velocity);
+
+    wheel_command[i].drive_angular_velocity *= velocity_scale;
   }
 
-  const auto update_dt = current_time - previous_update_timestamp_;
-  previous_update_timestamp_ = current_time;
+  // Apply wheel commands to hardware interfaces
+  const bool is_stop =
+    (std::fabs(last_command_msg->twist.linear.x) < EPS) &&
+    (std::fabs(last_command_msg->twist.linear.y) < EPS) &&
+    (std::fabs(last_command_msg->twist.angular.z) < EPS);
 
+  for (std::size_t i = 0; i < NUM_WHEELS; i++)
+  {
+    if (is_stop)
+    {
+      // When stopped, maintain current steering angle to avoid unnecessary motion
+      axle_handles_[i]->set_position(previous_steering_angles_[i]);
+    }
+    else
+    {
+      // When moving, apply computed steering angle and update tracking
+      axle_handles_[i]->set_position(wheel_command[i].steering_angle);
+      previous_steering_angles_[i] = wheel_command[i].steering_angle;
+    }
+    wheel_handles_[i]->set_velocity(wheel_command[i].drive_angular_velocity);
+  }
+
+  const auto update_dt = time - previous_update_timestamp_;
+  previous_update_timestamp_ = time;
+
+  // update odometry
   swerve_drive_controller::OdometryState odometry_;
-
-  std::array<double, 4> velocity_array{};
-  std::array<double, 4> steering_angle_array{};
-
-  for (std::size_t i = 0; i < 4; ++i)
+  std::array<double, NUM_WHEELS> velocity_array{};
+  std::array<double, NUM_WHEELS> steering_angle_array{};
+  for (std::size_t i = 0; i < NUM_WHEELS; ++i)
   {
     if (params_.open_loop)
     {
-      velocity_array[i] = wheel_command[i].drive_velocity;
+      velocity_array[i] = wheel_command[i].drive_angular_velocity * params_.wheel_radius;
       steering_angle_array[i] = wheel_command[i].steering_angle;
     }
     else
@@ -457,96 +450,83 @@ controller_interface::return_type SwerveController::update(
   }
   odometry_ = swerveDriveKinematics_.update_odometry(
     velocity_array, steering_angle_array, update_dt.seconds());
-
   tf2::Quaternion orientation;
   orientation.setRPY(0.0, 0.0, odometry_.theta);
 
-  try
-  {
-    if (previous_publish_timestamp_ + publish_period_ < time)
-    {
-      previous_publish_timestamp_ += publish_period_;
+  // Publish odometry at the configured rate
+  const bool should_publish = (time - previous_publish_timestamp_) >= publish_period_;
+
+  if (should_publish) {
+    if (realtime_odometry_publisher_->trylock()) {
+      auto & odometry_message = realtime_odometry_publisher_->msg_;
+      odometry_message.header.stamp = time;
+      odometry_message.pose.pose.position.x = odometry_.x;
+      odometry_message.pose.pose.position.y = odometry_.y;
+      odometry_message.pose.pose.orientation.x = orientation.x();
+      odometry_message.pose.pose.orientation.y = orientation.y();
+      odometry_message.pose.pose.orientation.z = orientation.z();
+      odometry_message.pose.pose.orientation.w = orientation.w();
+      odometry_message.twist.twist.linear.x = odometry_.vx;
+      odometry_message.twist.twist.linear.y = odometry_.vy;
+      odometry_message.twist.twist.angular.z = odometry_.wz;
+      realtime_odometry_publisher_->unlockAndPublish();
     }
-  }
-  catch (const std::runtime_error &)
-  {
+
+    if (params_.enable_odom_tf && realtime_odometry_transform_publisher_->trylock()) {
+      auto & transform = realtime_odometry_transform_publisher_->msg_.transforms.front();
+      transform.header.stamp = time;
+      transform.transform.translation.x = odometry_.x;
+      transform.transform.translation.y = odometry_.y;
+      transform.transform.translation.z = 0.0;
+      transform.transform.rotation.x = orientation.x();
+      transform.transform.rotation.y = orientation.y();
+      transform.transform.rotation.z = orientation.z();
+      transform.transform.rotation.w = orientation.w();
+      realtime_odometry_transform_publisher_->unlockAndPublish();
+    }
+    // Update timestamp after successful publish
     previous_publish_timestamp_ = time;
   }
 
-  if (realtime_odometry_publisher_ && realtime_odometry_publisher_->trylock())
-  {
-    auto & odometry_message = realtime_odometry_publisher_->msg_;
-    odometry_message.header.stamp = time;
-    odometry_message.pose.pose.position.x = odometry_.x;
-    odometry_message.pose.pose.position.y = odometry_.y;
-    odometry_message.pose.pose.orientation.x = orientation.x();
-    odometry_message.pose.pose.orientation.y = orientation.y();
-    odometry_message.pose.pose.orientation.z = orientation.z();
-    odometry_message.pose.pose.orientation.w = orientation.w();
-    realtime_odometry_publisher_->unlockAndPublish();
-  }
-
-  if (realtime_odometry_transform_publisher_ && realtime_odometry_transform_publisher_->trylock())
-  {
-    auto & transform = realtime_odometry_transform_publisher_->msg_.transforms.front();
-    transform.header.stamp = time;
-    transform.transform.translation.x = odometry_.x;
-    transform.transform.translation.y = odometry_.y;
-    transform.transform.translation.z = 0.0;
-    transform.transform.rotation.x = orientation.x();
-    transform.transform.rotation.y = orientation.y();
-    transform.transform.rotation.z = orientation.z();
-    transform.transform.rotation.w = orientation.w();
-    realtime_odometry_transform_publisher_->unlockAndPublish();
-  }
   return controller_interface::return_type::OK;
 }
 
 CallbackReturn SwerveController::on_deactivate(const rclcpp_lifecycle::State &)
 {
-  subscriber_is_active_ = false;
+  halt();
+  wheel_handles_.clear();
+  axle_handles_.clear();
   return CallbackReturn::SUCCESS;
 }
 
 CallbackReturn SwerveController::on_cleanup(const rclcpp_lifecycle::State &)
 {
-  if (!reset())
-  {
-    return CallbackReturn::ERROR;
-  }
-
-  received_velocity_msg_ptr_.writeFromNonRT(std::make_shared<TwistStamped>());
+  // Resources are automatically released by destructors
   return CallbackReturn::SUCCESS;
 }
 
 CallbackReturn SwerveController::on_error(const rclcpp_lifecycle::State &)
 {
-  if (!reset())
-  {
-    return CallbackReturn::ERROR;
-  }
+  // Don't clear handles in error state - update() might still be running
+  // Just halt motion safely
+  halt();
   return CallbackReturn::SUCCESS;
-}
-
-bool SwerveController::reset()
-{
-  subscriber_is_active_ = false;
-  velocity_command_subscriber_.reset();
-  velocity_command_unstamped_subscriber_.reset();
-
-  auto zero_twist = std::make_shared<TwistStamped>();
-  zero_twist->header.stamp = get_node()->get_clock()->now();
-  zero_twist->twist.linear.x = 0.0;
-  zero_twist->twist.linear.y = 0.0;
-  zero_twist->twist.angular.z = 0.0;
-  received_velocity_msg_ptr_.writeFromNonRT(zero_twist);
-  is_halted_ = false;
-  return true;
 }
 
 CallbackReturn SwerveController::on_shutdown(const rclcpp_lifecycle::State &)
 {
   return CallbackReturn::SUCCESS;
+}
+
+std::shared_ptr<SwerveController::TwistStamped> SwerveController::createZeroVelocityCommand(
+  const rclcpp::Time & stamp) const
+{
+  auto zero_cmd = std::make_shared<TwistStamped>();
+  zero_cmd->header.stamp = stamp;
+  zero_cmd->twist.linear.x = 0.0;
+  zero_cmd->twist.linear.y = 0.0;
+  zero_cmd->twist.angular.z = 0.0;
+  return zero_cmd;
 }
 
 void SwerveController::halt()
@@ -565,10 +545,9 @@ template <typename T>
 std::unique_ptr<T> get_interface_object(
   std::vector<hardware_interface::LoanedCommandInterface> & command_interfaces,
   const std::vector<hardware_interface::LoanedStateInterface> & state_interfaces,
-  const std::string & name, const std::string & interface_suffix, const std::string & hw_if_type)
+  const std::string & name, const std::string & interface_suffix, const std::string & hw_if_type,
+  const rclcpp::Logger & logger)
 {
-  auto logger = rclcpp::get_logger("SwerveController");
-
   if (name.empty())
   {
     RCLCPP_ERROR(logger, "Joint name not given. Make sure all joints are specified.");
@@ -614,13 +593,13 @@ std::unique_ptr<T> get_interface_object(
 std::unique_ptr<Wheel> SwerveController::get_wheel(const std::string & wheel_name)
 {
   return get_interface_object<Wheel>(
-    command_interfaces_, state_interfaces_, wheel_name, "/velocity", HW_IF_VELOCITY);
+    command_interfaces_, state_interfaces_, wheel_name, "/velocity", HW_IF_VELOCITY, logger_);
 }
 
 std::unique_ptr<Axle> SwerveController::get_axle(const std::string & axle_name)
 {
   return get_interface_object<Axle>(
-    command_interfaces_, state_interfaces_, axle_name, "/position", HW_IF_POSITION);
+    command_interfaces_, state_interfaces_, axle_name, "/position", HW_IF_POSITION, logger_);
 }
 
 }  // namespace swerve_drive_controller
