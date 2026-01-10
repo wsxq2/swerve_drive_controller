@@ -337,22 +337,6 @@ controller_interface::return_type SwerveController::update(
   wheel_command =
     swerveDriveKinematics_.optimize_wheel_commands(wheel_command, current_steering_angles);
 
-  // Apply angular velocity thresholds (convert linear velocity thresholds to angular)
-  const std::array<double, NUM_WHEELS> angular_velocity_thresholds {{
-    params_.front_left_velocity_threshold / params_.wheel_radius,
-    params_.front_right_velocity_threshold / params_.wheel_radius,
-    params_.rear_left_velocity_threshold / params_.wheel_radius,
-    params_.rear_right_velocity_threshold / params_.wheel_radius
-  }};
-
-  for (std::size_t i = 0; i < NUM_WHEELS; ++i)
-  {
-    if (wheel_command[i].drive_angular_velocity > angular_velocity_thresholds[i])
-    {
-      wheel_command[i].drive_angular_velocity = angular_velocity_thresholds[i];
-    }
-  }
-
   // Apply velocity scaling based on steering error to prevent motion when wheels are misaligned
   constexpr double min_steering_error = M_PI / 6.0;  // 30 degrees - no scaling below this
   constexpr double max_steering_error = 1.5608;      // ~89.5 degrees - minimum velocity above this
