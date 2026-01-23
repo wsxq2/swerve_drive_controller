@@ -349,18 +349,9 @@ controller_interface::return_type SwerveController::update(
         current_steering_angles[i], wheel_command[i].steering_angle));
 
     double velocity_scale = 1.0;
-    if (steering_error > min_steering_error)
+    if (steering_error > EPS)
     {
-      if (steering_error >= max_steering_error)
-      {
-        // Use minimum velocity (1%) when nearly perpendicular to avoid division by near-zero
-        velocity_scale = 0.01 / cos_min_error;
-      }
-      else
-      {
-        // Cosine-based smooth scaling: 100% at 30°, ~58% at 60°, ~1% at 89.5°
-        velocity_scale = std::cos(steering_error) / cos_min_error;
-      }
+      velocity_scale = 0.0;
     }
 
     wheel_command[i].drive_angular_velocity *= velocity_scale;
