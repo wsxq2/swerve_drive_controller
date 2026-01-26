@@ -83,7 +83,7 @@ std::array<WheelCommand, 4> SwerveDriveKinematics::optimize_wheel_commands(
     double angle_diff = angles::shortest_angular_distance(current_angle, target_angle);
 
     // ensure target angle is within +/- 90 degrees
-    if (std::abs(target_angle) >= M_PI_2)
+    if (std::abs(target_angle) > M_PI_2)
     {
       optimized_commands[i].drive_angular_velocity = -wheel_commands[i].drive_angular_velocity;
 
