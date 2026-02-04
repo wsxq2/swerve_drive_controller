@@ -114,7 +114,7 @@ protected:
   std::array<std::string, 4> wheel_joint_names{};
   std::array<std::string, 4> axle_joint_names{};
 
-  static constexpr double EPS = 1e-6;
+  static constexpr double EPS = 0.001;
   std::array<double, 4> previous_steering_angles_{};
 
   rclcpp_lifecycle::LifecycleNode::SharedPtr node_;
