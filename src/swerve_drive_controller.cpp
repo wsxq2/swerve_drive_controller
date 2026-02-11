@@ -338,9 +338,7 @@ controller_interface::return_type SwerveController::update(
     swerveDriveKinematics_.optimize_wheel_commands(wheel_command, current_steering_angles);
 
   // Apply velocity scaling based on steering error to prevent motion when wheels are misaligned
-  constexpr double min_steering_error = M_PI / 6.0;  // 30 degrees - no scaling below this
-  constexpr double max_steering_error = 1.5608;      // ~89.5 degrees - minimum velocity above this
-  const double cos_min_error = std::cos(min_steering_error);
+  constexpr double min_steering_error = 0.001;
 
   for (std::size_t i = 0; i < NUM_WHEELS; i++)
   {
@@ -350,18 +348,15 @@ controller_interface::return_type SwerveController::update(
 
     double velocity_scale = 1.0;
 #if 1
-    velocity_scale = std::cos(steering_error);
-#else
     if (steering_error > min_steering_error) {
-      if (steering_error >= max_steering_error) {
-        // Use minimum velocity (1%) when nearly perpendicular to avoid division by near-zero
-        velocity_scale = 0.01 / cos_min_error;
+      if (steering_error >= M_PI_2) {
+        velocity_scale = 0.0;
       } else {
-        // Cosine-based smooth scaling: 100% at 30°, ~58% at 60°, ~1% at 89.5°
-        velocity_scale = std::cos(steering_error) / cos_min_error;
+        velocity_scale = std::cos(steering_error);
       }
     }
-    if (steering_error > EPS) {
+#else
+    if (steering_error > min_steering_error) {
       velocity_scale = 0.0;
     }
 #endif
