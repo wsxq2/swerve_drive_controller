@@ -484,10 +484,6 @@ void SwerveController::halt()
   {
     wheel_handles_[i]->set_velocity(0.0);
   }
-  for (std::size_t i = 0; i < axle_handles_.size(); ++i)
-  {
-    axle_handles_[i]->set_position(0.0);
-  }
 }
 
 template <typename T>
