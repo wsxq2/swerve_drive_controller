@@ -74,6 +74,11 @@ std::array<WheelCommand, 4> SwerveDriveKinematics::optimize_wheel_commands(
   const std::array<double, 4> & current_steering_angles)
 {
   std::array<WheelCommand, 4> optimized_commands = wheel_commands;
+  
+  auto reverse_angle_and_velocity = [](double &angle, double &velocity) {
+    velocity = -velocity;
+    angle = angles::normalize_angle(angle + M_PI);
+  };
 
   for (std::size_t i = 0; i < 4; i++)
   {
@@ -81,13 +86,16 @@ std::array<WheelCommand, 4> SwerveDriveKinematics::optimize_wheel_commands(
     double current_angle = current_steering_angles[i];
 
     double angle_diff = angles::shortest_angular_distance(current_angle, target_angle);
+    
+    if(std::abs(angle_diff) > M_PI_2)
+    {
+      reverse_angle_and_velocity(optimized_commands[i].steering_angle, optimized_commands[i].drive_angular_velocity);
+    }
 
     // ensure target angle is within +/- 120 degrees (actual use 119)
     if (std::abs(target_angle) > 2.07694)
     {
-      optimized_commands[i].drive_angular_velocity = -wheel_commands[i].drive_angular_velocity;
-
-      optimized_commands[i].steering_angle = angles::normalize_angle(target_angle + M_PI);
+      reverse_angle_and_velocity(optimized_commands[i].steering_angle, optimized_commands[i].drive_angular_velocity);
     }
   }
 
