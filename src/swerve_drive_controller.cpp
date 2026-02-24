@@ -12,6 +12,7 @@
 // limitations under the License.
 
 #include "swerve_drive_controller/swerve_drive_controller.hpp"
+#include <angles/angles.h>
 
 #include <cmath>
 #include <memory>
@@ -334,8 +335,29 @@ controller_interface::return_type SwerveController::update(
     current_steering_angles[i] = axle_handles_[i]->get_feedback();
   }
 
+  double vx=std::abs(last_command_msg->twist.linear.x);
+  double vy=std::abs(last_command_msg->twist.linear.y);
+  double wz=std::abs(last_command_msg->twist.angular.z);
+  if((vx < EPS && vy > EPS && wz < EPS) || (wz > EPS && vx < EPS && vy < EPS)) {
+    // 这里为了解决将反转时机设置为 120 度后在平移时或者原地旋转时轮子会有不必要转向运动的问题
+    // TODO: 是否有更好的方法？此外是否应该将相关代码整合到 optimize_wheel_commands 函数？
+    for(size_t i = 0; i < NUM_WHEELS; ++i)
+    {
+      double angle_diff = angles::shortest_angular_distance(current_steering_angles[i], wheel_command[i].steering_angle);
+      if (std::abs(angle_diff) > M_PI_2)
+      {
+        wheel_command[i].drive_angular_velocity = -wheel_command[i].drive_angular_velocity;
+
+        wheel_command[i].steering_angle = angles::normalize_angle(wheel_command[i].steering_angle + M_PI);
+      }
+    }
+  }
+  else
+  {
+    // Optimize wheel commands by potentially reversing direction and adjusting steering angle
   wheel_command =
     swerveDriveKinematics_.optimize_wheel_commands(wheel_command, current_steering_angles);
+  }
 
   // Apply velocity scaling based on steering error to prevent motion when wheels are misaligned
   constexpr double min_steering_error = 0.001;
