@@ -91,6 +91,8 @@ std::array<WheelCommand, 4> SwerveDriveKinematics::optimize_wheel_commands(
     {
       reverse_angle_and_velocity(optimized_commands[i].steering_angle, optimized_commands[i].drive_angular_velocity);
     }
+    
+    target_angle = optimized_commands[i].steering_angle;  // update target angle after potential reversal
 
     // ensure target angle is within +/- 120 degrees (actual use 119)
     if (std::abs(target_angle) > 2.07694)
