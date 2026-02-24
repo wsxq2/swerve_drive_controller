@@ -271,18 +271,19 @@ def analyze_swerve():
     trackwidth = 1.7
     wheelbase = 3.26
 
-    w_z_range = np.linspace(-8, 8, 5000)
+    w_z_range = np.linspace(-0.087266, 0.087266, 5000)
     if_first_run = True  # 重置第一次运行标记
-    # plot_vs_wz(trackwidth, wheelbase, 0.1, 0.0, w_z_range, if_optimize=if_optimize)
+    plot_vs_wz(trackwidth, wheelbase, 0.3, 0.0, w_z_range, if_optimize=if_optimize)
 
     # vx变化分析
-    vx_range = np.linspace(-1, 1, 5000) # 这里第一个参数传入 0 和 -1 时的曲线有明显差异，该差异与 current_steering_angles 的更新有关
+    vx_range = np.linspace(0, 0.3, 5000) # 这里第一个参数传入 0 和 -1 时的曲线有明显差异，该差异与 current_steering_angles 的更新有关
     if_first_run = True  # 重置第一次运行标记
-    plot_vs_vx(trackwidth, wheelbase, vx_range, 0.0, 0.1, if_optimize=if_optimize)
+    plot_vs_vx(trackwidth, wheelbase, vx_range, 0.0, 0.087266, if_optimize=if_optimize)
+    return
 
     vy_range = np.linspace(-1, 1, 5000)
     if_first_run = True  # 重置第一次运行标记
-    # plot_vs_vy(trackwidth, wheelbase, 0.0, vy_range, 0.0, if_optimize=if_optimize)
+    plot_vs_vy(trackwidth, wheelbase, 0.0, vy_range, 0.0, if_optimize=if_optimize)
 
 if __name__ == "__main__":
     analyze_swerve()
