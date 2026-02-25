@@ -349,7 +349,7 @@ controller_interface::return_type SwerveController::update(
         current_steering_angles[i], wheel_command[i].steering_angle));
 
     double velocity_scale = 1.0;
-#if 1
+#if 0
     if (steering_error > min_steering_error) {
       if (steering_error >= M_PI_2) {
         velocity_scale = 0.0;
