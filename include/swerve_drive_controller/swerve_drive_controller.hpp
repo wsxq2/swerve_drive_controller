@@ -113,6 +113,9 @@ protected:
   std::vector<std::unique_ptr<Axle>> axle_handles_;
   std::array<std::string, 4> wheel_joint_names{};
   std::array<std::string, 4> axle_joint_names{};
+  
+  // State interfaces for wheel positions (for position-based odometry)
+  std::vector<std::reference_wrapper<const hardware_interface::LoanedStateInterface>> wheel_position_state_interfaces_;
 
   static constexpr double EPS = 0.001;
   std::array<double, 4> previous_steering_angles_{};

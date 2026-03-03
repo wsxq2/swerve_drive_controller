@@ -122,10 +122,17 @@ InterfaceConfiguration SwerveController::command_interface_configuration() const
 InterfaceConfiguration SwerveController::state_interface_configuration() const
 {
   std::vector<std::string> conf_names;
+  // Wheel velocity interfaces
   conf_names.push_back(params_.front_left_wheel_joint + "/" + HW_IF_VELOCITY);
   conf_names.push_back(params_.front_right_wheel_joint + "/" + HW_IF_VELOCITY);
   conf_names.push_back(params_.rear_left_wheel_joint + "/" + HW_IF_VELOCITY);
   conf_names.push_back(params_.rear_right_wheel_joint + "/" + HW_IF_VELOCITY);
+  // Wheel position interfaces (for position-based odometry)
+  conf_names.push_back(params_.front_left_wheel_joint + "/" + HW_IF_POSITION);
+  conf_names.push_back(params_.front_right_wheel_joint + "/" + HW_IF_POSITION);
+  conf_names.push_back(params_.rear_left_wheel_joint + "/" + HW_IF_POSITION);
+  conf_names.push_back(params_.rear_right_wheel_joint + "/" + HW_IF_POSITION);
+  // Axle position interfaces
   conf_names.push_back(params_.front_left_axle_joint + "/" + HW_IF_POSITION);
   conf_names.push_back(params_.front_right_axle_joint + "/" + HW_IF_POSITION);
   conf_names.push_back(params_.rear_left_axle_joint + "/" + HW_IF_POSITION);
@@ -271,6 +278,7 @@ CallbackReturn SwerveController::on_activate(const rclcpp_lifecycle::State &)
 {
   wheel_handles_.resize(NUM_WHEELS);
   axle_handles_.resize(NUM_WHEELS);
+  wheel_position_state_interfaces_.clear();
 
   for (std::size_t i = 0; i < NUM_WHEELS; i++)
   {
@@ -290,6 +298,21 @@ CallbackReturn SwerveController::on_activate(const rclcpp_lifecycle::State &)
     }
     axle_handles_[i]->set_position(0.0);
     previous_steering_angles_[i] = axle_handles_[i]->get_feedback();
+    
+    // Get wheel position state interface for position-based odometry
+    const std::string wheel_position_interface_name = wheel_joint_names[i] + "/" + HW_IF_POSITION;
+    auto wheel_pos_it = std::find_if(
+      state_interfaces_.begin(), state_interfaces_.end(),
+      [&wheel_position_interface_name](const auto & interface) {
+        return interface.get_name() == wheel_position_interface_name &&
+               interface.get_interface_name() == HW_IF_POSITION;
+      });
+    
+    if (wheel_pos_it == state_interfaces_.end()) {
+      RCLCPP_ERROR(logger_, "Unable to find wheel position state interface for: %s", wheel_joint_names[i].c_str());
+      return CallbackReturn::ERROR;
+    }
+    wheel_position_state_interfaces_.emplace_back(*wheel_pos_it);
   }
 
   RCLCPP_INFO(logger_, "Subscriber and publisher are now active.");
@@ -390,23 +413,29 @@ controller_interface::return_type SwerveController::update(
 
   // update odometry using period from controller manager
   swerve_drive_controller::OdometryState odometry_;
+  std::array<double, NUM_WHEELS> position_array{};
   std::array<double, NUM_WHEELS> velocity_array{};
   std::array<double, NUM_WHEELS> steering_angle_array{};
+  
   for (std::size_t i = 0; i < NUM_WHEELS; ++i)
   {
     if (params_.open_loop)
     {
-      velocity_array[i] = wheel_command[i].drive_angular_velocity * params_.wheel_radius;
+      velocity_array[i] = wheel_command[i].drive_angular_velocity;
       steering_angle_array[i] = wheel_command[i].steering_angle;
     }
     else
     {
-      velocity_array[i] = wheel_handles_[i]->get_feedback() * params_.wheel_radius;
+      velocity_array[i] = wheel_handles_[i]->get_feedback();
       steering_angle_array[i] = axle_handles_[i]->get_feedback();
     }
+    // Always read wheel positions for position-based odometry
+    position_array[i] = wheel_position_state_interfaces_[i].get().get_value();
   }
+  
+  // Update odometry using position + velocity (more accurate than velocity-only)
   odometry_ = swerveDriveKinematics_.update_odometry(
-    velocity_array, steering_angle_array, period.seconds());
+    position_array, velocity_array, steering_angle_array, period.seconds());
   tf2::Quaternion orientation;
   orientation.setRPY(0.0, 0.0, odometry_.theta);
 
@@ -447,6 +476,7 @@ CallbackReturn SwerveController::on_deactivate(const rclcpp_lifecycle::State &)
   halt();
   wheel_handles_.clear();
   axle_handles_.clear();
+  wheel_position_state_interfaces_.clear();
   return CallbackReturn::SUCCESS;
 }
 

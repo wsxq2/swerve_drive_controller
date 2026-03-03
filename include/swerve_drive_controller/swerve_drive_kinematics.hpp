@@ -96,21 +96,45 @@ public:
     const std::array<double, 4> & current_steering_angles);
 
   /**
-   * @brief Update the odometry based on wheel velocities and elapsed time.
-   * @param wheel_velocities Array of measured wheel velocities (m/s).
+   * @brief Update the odometry based on wheel angular velocities and elapsed time.
+   * @param wheel_angular_velocities Array of measured wheel angular velocities (rad/s).
    * @param steering_angles Array of measured steering angles (radians).
    * @param dt Time step (seconds).
    * @return Updated odometry state.
    */
-
   OdometryState update_odometry(
-    const std::array<double, 4> & wheel_velocities_, const std::array<double, 4> & steering_angles_,
+    const std::array<double, 4> & wheel_angular_velocities,
+    const std::array<double, 4> & steering_angles,
+    double dt);
+
+  /**
+   * @brief Update the odometry based on wheel positions and angular velocities.
+   * 
+   * Uses wheel absolute positions to calculate position odometry (x, y, theta),
+   * and wheel angular velocities to calculate velocity odometry (vx, vy, wz).
+   * This method is more accurate than pure velocity integration as it avoids
+   * the "position→velocity→position" error accumulation cycle.
+   * 
+   * @param wheel_positions Array of wheel absolute positions (radians).
+   * @param wheel_angular_velocities Array of wheel angular velocities (rad/s).
+   * @param steering_angles Array of measured steering angles (radians).
+   * @param dt Time step (seconds).
+   * @return Updated odometry state.
+   */
+  OdometryState update_odometry(
+    const std::array<double, 4> & wheel_positions,
+    const std::array<double, 4> & wheel_angular_velocities,
+    const std::array<double, 4> & steering_angles,
     double dt);
 
 private:
   std::array<std::pair<double, double>, 4> wheel_positions_;  // Wheel Positions
   OdometryState odometry_;                                    // Current Odometry of the robot
   double wheel_radius_{0.0};                                  // Wheel radius in meters
+  
+  // For position-based odometry
+  std::array<double, 4> prev_wheel_positions_;  // Previous wheel positions for delta calculation
+  bool first_update_{true};                     // Flag to indicate first update (no history)
 };
 }  // namespace swerve_drive_controller
 
