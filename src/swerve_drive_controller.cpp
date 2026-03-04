@@ -364,29 +364,50 @@ controller_interface::return_type SwerveController::update(
 
   // Apply velocity scaling based on steering error to prevent motion when wheels are misaligned
   constexpr double min_steering_error = 0.001;
+  constexpr double min_wheel_velocity = 0.001; // rad/s, threshold to consider wheel as stopped
 
+  // First, check if any wheel is misaligned
+  bool any_wheel_misaligned = false;
   for (std::size_t i = 0; i < NUM_WHEELS; i++)
   {
     const double steering_error = std::abs(
       angles::shortest_angular_distance(
         current_steering_angles[i], wheel_command[i].steering_angle));
 
-    double velocity_scale = 1.0;
-#if 0
     if (steering_error > min_steering_error) {
-      if (steering_error >= M_PI_2) {
-        velocity_scale = 0.0;
-      } else {
-        velocity_scale = std::cos(steering_error);
+      any_wheel_misaligned = true;
+      break;
+    }
+  }
+
+  // Check if any wheel is still moving
+  bool any_wheel_moving = false;
+  for (std::size_t i = 0; i < NUM_WHEELS; i++)
+  {
+    const double current_velocity = std::abs(wheel_handles_[i]->get_feedback());
+    if (current_velocity > min_wheel_velocity) {
+      any_wheel_moving = true;
+      break;
+    }
+  }
+
+  // Safety logic: If any wheel is misaligned, ensure all wheels stop before allowing movement
+  // This prevents the robot from moving with misaligned wheels
+  if (any_wheel_misaligned) {
+    // Set all wheel velocities to 0 to stop/prevent motion
+    for (std::size_t i = 0; i < NUM_WHEELS; i++)
+    {
+      wheel_command[i].drive_angular_velocity = 0.0;
+    }
+    
+    // If wheels are still moving, maintain current steering angles to avoid additional changes
+    // Once stopped, allow steering to align
+    if (any_wheel_moving) {
+      for (std::size_t i = 0; i < NUM_WHEELS; i++)
+      {
+        wheel_command[i].steering_angle = current_steering_angles[i];
       }
     }
-#else
-    if (steering_error > min_steering_error) {
-      velocity_scale = 0.0;
-    }
-#endif
-
-    wheel_command[i].drive_angular_velocity *= velocity_scale;
   }
 
   // Apply wheel commands to hardware interfaces
