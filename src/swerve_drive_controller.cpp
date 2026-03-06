@@ -391,22 +391,16 @@ controller_interface::return_type SwerveController::update(
     }
   }
 
-  // Safety logic: If any wheel is misaligned, ensure all wheels stop before allowing movement
-  // This prevents the robot from moving with misaligned wheels
+  // Safety logic: If any wheel is misaligned, stop all wheels
+  // Only allow steering adjustment when wheels are completely stopped
+  // This prevents motor errors from simultaneous velocity and steering changes
+  const bool allow_steering_adjustment = !any_wheel_moving;
+  
   if (any_wheel_misaligned) {
     // Set all wheel velocities to 0 to stop/prevent motion
     for (std::size_t i = 0; i < NUM_WHEELS; i++)
     {
       wheel_command[i].drive_angular_velocity = 0.0;
-    }
-    
-    // If wheels are still moving, maintain current steering angles to avoid additional changes
-    // Once stopped, allow steering to align
-    if (any_wheel_moving) {
-      for (std::size_t i = 0; i < NUM_WHEELS; i++)
-      {
-        wheel_command[i].steering_angle = current_steering_angles[i];
-      }
     }
   }
 
@@ -418,14 +412,15 @@ controller_interface::return_type SwerveController::update(
 
   for (std::size_t i = 0; i < NUM_WHEELS; i++)
   {
-    if (is_stop)
+    // Determine whether to update steering angle
+    if (is_stop || !allow_steering_adjustment)
     {
-      // When stopped, maintain current steering angle to avoid unnecessary motion
+      // Maintain current steering angle when stopped or when wheels need to stop first
       axle_handles_[i]->set_position(previous_steering_angles_[i]);
     }
     else
     {
-      // When moving, apply computed steering angle and update tracking
+      // Apply computed steering angle and update tracking
       axle_handles_[i]->set_position(wheel_command[i].steering_angle);
       previous_steering_angles_[i] = wheel_command[i].steering_angle;
     }
