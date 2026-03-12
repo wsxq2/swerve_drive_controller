@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -284,6 +285,7 @@ def analyze_swerve():
     vy_range = np.linspace(-1, 1, 5000)
     if_first_run = True  # 重置第一次运行标记
     plot_vs_vy(trackwidth, wheelbase, 0.0, vy_range, 0.0, if_optimize=if_optimize)
-
 if __name__ == "__main__":
-    analyze_swerve()
+    # analyze_swerve()
+    r = swerve_inverse_kinematics(0.2, 0.0, 0.0057366, 1.7, 3.26)
+    print(r)

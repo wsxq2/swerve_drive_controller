@@ -394,8 +394,6 @@ controller_interface::return_type SwerveController::update(
   // Safety logic: If any wheel is misaligned, stop all wheels
   // Only allow steering adjustment when wheels are completely stopped
   // This prevents motor errors from simultaneous velocity and steering changes
-  const bool allow_steering_adjustment = !any_wheel_moving;
-  
   if (any_wheel_misaligned) {
     // Set all wheel velocities to 0 to stop/prevent motion
     for (std::size_t i = 0; i < NUM_WHEELS; i++)
@@ -413,7 +411,7 @@ controller_interface::return_type SwerveController::update(
   for (std::size_t i = 0; i < NUM_WHEELS; i++)
   {
     // Determine whether to update steering angle
-    if (is_stop || !allow_steering_adjustment)
+    if (is_stop || any_wheel_moving)
     {
       // Maintain current steering angle when stopped or when wheels need to stop first
       axle_handles_[i]->set_position(previous_steering_angles_[i]);
