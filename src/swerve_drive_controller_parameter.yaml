@@ -96,6 +96,33 @@ swerve_drive_controller:
     },
     read_only: true
   }
+  cmd_vel_linear_x_threshold: {
+    type: double,
+    default_value: 0.001,
+    description: "Threshold for linear x velocity changes (m/s). Changes smaller than this will be ignored.",
+    validation: {
+      "swerve_drive_controller::gt_eq<>": [0.0]
+    },
+    read_only: true
+  }
+  cmd_vel_linear_y_threshold: {
+    type: double,
+    default_value: 0.001,
+    description: "Threshold for linear y velocity changes (m/s). Changes smaller than this will be ignored.",
+    validation: {
+      "swerve_drive_controller::gt_eq<>": [0.0]
+    },
+    read_only: true
+  }
+  cmd_vel_angular_z_threshold: {
+    type: double,
+    default_value: 0.001,
+    description: "Threshold for angular z velocity changes (rad/s). Changes smaller than this will be ignored.",
+    validation: {
+      "swerve_drive_controller::gt_eq<>": [0.0]
+    },
+    read_only: true
+  }
   use_stamped_vel: {
     type: bool,
     default_value: false,

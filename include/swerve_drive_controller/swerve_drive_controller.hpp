@@ -140,6 +140,9 @@ protected:
   std::shared_ptr<realtime_tools::RealtimePublisher<tf2_msgs::msg::TFMessage>>
     realtime_odometry_transform_publisher_ = nullptr;
 
+  // Store last executed command for threshold comparison
+  std::shared_ptr<TwistStamped> last_executed_command_{nullptr};
+
   void halt();
   std::shared_ptr<TwistStamped> createZeroVelocityCommand(const rclcpp::Time & stamp) const;
 };

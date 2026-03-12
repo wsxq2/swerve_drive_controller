@@ -280,6 +280,9 @@ CallbackReturn SwerveController::on_activate(const rclcpp_lifecycle::State &)
   axle_handles_.resize(NUM_WHEELS);
   wheel_position_state_interfaces_.clear();
 
+  // Reset last executed command on activation
+  last_executed_command_ = nullptr;
+
   for (std::size_t i = 0; i < NUM_WHEELS; i++)
   {
     wheel_handles_[i] = get_wheel(wheel_joint_names[i]);
@@ -348,6 +351,38 @@ controller_interface::return_type SwerveController::update(
     last_command_msg->twist.angular.z = 0.0;
   }
 
+  const bool is_stop =
+    (std::fabs(last_command_msg->twist.linear.x) < EPS) &&
+    (std::fabs(last_command_msg->twist.linear.y) < EPS) &&
+    (std::fabs(last_command_msg->twist.angular.z) < EPS);
+
+  // If this is not a stop command and we have a previous command, check thresholds
+  if (!is_stop && last_executed_command_ != nullptr)
+  {
+    const double delta_vx = std::abs(last_command_msg->twist.linear.x - last_executed_command_->twist.linear.x);
+    const double delta_vy = std::abs(last_command_msg->twist.linear.y - last_executed_command_->twist.linear.y);
+    const double delta_wz = std::abs(last_command_msg->twist.angular.z - last_executed_command_->twist.angular.z);
+
+    // If all changes are below threshold, use the last executed command
+    if (delta_vx < params_.cmd_vel_linear_x_threshold &&
+        delta_vy < params_.cmd_vel_linear_y_threshold &&
+        delta_wz < params_.cmd_vel_angular_z_threshold)
+    {
+      // Continue with the last executed command
+      last_command_msg = last_executed_command_;
+    }
+    else
+    {
+      // Changes exceed threshold, update the last executed command
+      last_executed_command_ = last_command_msg;
+    }
+  }
+  else
+  {
+    // This is a stop command or first command, always execute and save
+    last_executed_command_ = last_command_msg;
+  }
+
   auto wheel_command = swerveDriveKinematics_.compute_wheel_commands(
     last_command_msg->twist.linear.x, last_command_msg->twist.linear.y,
     last_command_msg->twist.angular.z);
@@ -401,12 +436,6 @@ controller_interface::return_type SwerveController::update(
       wheel_command[i].drive_angular_velocity = 0.0;
     }
   }
-
-  // Apply wheel commands to hardware interfaces
-  const bool is_stop =
-    (std::fabs(last_command_msg->twist.linear.x) < EPS) &&
-    (std::fabs(last_command_msg->twist.linear.y) < EPS) &&
-    (std::fabs(last_command_msg->twist.angular.z) < EPS);
 
   for (std::size_t i = 0; i < NUM_WHEELS; i++)
   {
@@ -491,6 +520,7 @@ CallbackReturn SwerveController::on_deactivate(const rclcpp_lifecycle::State &)
   wheel_handles_.clear();
   axle_handles_.clear();
   wheel_position_state_interfaces_.clear();
+  last_executed_command_ = nullptr;
   return CallbackReturn::SUCCESS;
 }
 
