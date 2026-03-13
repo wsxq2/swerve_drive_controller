@@ -370,36 +370,78 @@ controller_interface::return_type SwerveController::update(
   wheel_command =
     swerveDriveKinematics_.optimize_wheel_commands(wheel_command, current_steering_angles);
 
-  const double min_steering_error = M_PI / 6.0;  // 30 degrees
-  for (std::size_t i = 0; i < NUM_WHEELS; i++)
-  {
-    double steering_error = std::abs(
-      angles::shortest_angular_distance(
-        current_steering_angles[i], wheel_command[i].steering_angle));
+  bool translate_mode = ((std::fabs(last_command_msg->twist.linear.x) > EPS) ||
+                         (std::fabs(last_command_msg->twist.linear.y) > EPS)) &&
+                        (std::fabs(last_command_msg->twist.angular.z) == 0.0);
+  bool rotate_mode = (std::fabs(last_command_msg->twist.linear.x) == 0.0) &&
+                     (std::fabs(last_command_msg->twist.linear.y) == 0.0) &&
+                     (std::fabs(last_command_msg->twist.angular.z) > EPS);
+  bool any_wheel_moving = false;
+  // The following code'output is wheel_command[i].drive_angular_velocity and any_wheel_moving
+  if (translate_mode || rotate_mode) {
+    // Apply velocity scaling based on steering error to prevent motion when wheels are misaligned
+    constexpr double min_steering_error_allowed = 0.001;
+    constexpr double min_wheel_velocity = 0.001;  // rad/s, threshold to consider wheel as stopped
 
-    double velocity_scale = 1.0;
-    if (steering_error > min_steering_error)
-    {
-      if (steering_error >= 1.5608)  // ~89.5 degrees
-      {
-        // cos(1.5608) = 0.01
-        velocity_scale = 0.01 / std::cos(min_steering_error);
-      }
-      else
-      {
-        // Scale velocity based on steering error using cosine function
-        velocity_scale = std::cos(steering_error) / std::cos(min_steering_error);
+    // First, check if any wheel is misaligned
+    bool any_wheel_misaligned = false;
+    for (std::size_t i = 0; i < NUM_WHEELS; i++) {
+      const double steering_error = std::abs(
+        angles::shortest_angular_distance(
+          current_steering_angles[i], wheel_command[i].steering_angle));
+
+      if (steering_error > min_steering_error_allowed) {
+        any_wheel_misaligned = true;
+        break;
       }
     }
 
-    // Apply velocity scaling
-    wheel_command[i].drive_angular_velocity *= velocity_scale;
+    // Check if any wheel is still moving
+    for (std::size_t i = 0; i < NUM_WHEELS; i++) {
+      const double current_velocity = std::abs(wheel_handles_[i]->get_feedback());
+      if (current_velocity > min_wheel_velocity) {
+        any_wheel_moving = true;
+        break;
+      }
+    }
+
+    // Safety logic: If any wheel is misaligned, stop all wheels
+    // Only allow steering adjustment when wheels are completely stopped
+    // This prevents motor errors from simultaneous velocity and steering changes
+    if (any_wheel_misaligned) {
+      // Set all wheel velocities to 0 to stop/prevent motion
+      for (std::size_t i = 0; i < NUM_WHEELS; i++) {
+        wheel_command[i].drive_angular_velocity = 0.0;
+      }
+    }
+  } else {
+    const double min_steering_error = M_PI / 6.0;  // 30 degrees
+    for (std::size_t i = 0; i < NUM_WHEELS; i++) {
+      double steering_error = std::abs(
+        angles::shortest_angular_distance(
+          current_steering_angles[i], wheel_command[i].steering_angle));
+
+      double velocity_scale = 1.0;
+      if (steering_error > min_steering_error) {
+        if (steering_error >= 1.5608)  // ~89.5 degrees
+        {
+          // cos(1.5608) = 0.01
+          velocity_scale = 0.01 / std::cos(min_steering_error);
+        } else {
+          // Scale velocity based on steering error using cosine function
+          velocity_scale = std::cos(steering_error) / std::cos(min_steering_error);
+        }
+      }
+
+      // Apply velocity scaling
+      wheel_command[i].drive_angular_velocity *= velocity_scale;
+    }
   }
 
   for (std::size_t i = 0; i < NUM_WHEELS; i++)
   {
     // Determine whether to update steering angle
-    if (is_stop)
+    if (is_stop || any_wheel_moving)
     {
       // Maintain current steering angle when stopped or when wheels need to stop first
       axle_handles_[i]->set_position(previous_steering_angles_[i]);
