@@ -207,3 +207,9 @@ swerve_drive_controller:
     description: "Odometry covariance for the encoder output of the robot for the speed. These values should be tuned to your robot's sample odometry data, but these values are a good place to start: ``[0.001, 0.001, 0.001, 0.001, 0.001, 0.01]``.",
     read_only: true
   }
+  translate_mode: {
+    type: bool,
+    default_value: false,
+    description: "If true, the robot will be in translate mode. This can help prevent motion when wheels are misaligned.",
+    read_only: true
+  }

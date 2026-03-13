@@ -370,15 +370,12 @@ controller_interface::return_type SwerveController::update(
   wheel_command =
     swerveDriveKinematics_.optimize_wheel_commands(wheel_command, current_steering_angles);
 
-  bool translate_mode = ((std::fabs(last_command_msg->twist.linear.x) > EPS) ||
-                         (std::fabs(last_command_msg->twist.linear.y) > EPS)) &&
-                        (std::fabs(last_command_msg->twist.angular.z) == 0.0);
   bool rotate_mode = (std::fabs(last_command_msg->twist.linear.x) == 0.0) &&
                      (std::fabs(last_command_msg->twist.linear.y) == 0.0) &&
                      (std::fabs(last_command_msg->twist.angular.z) > EPS);
   bool any_wheel_moving = false;
   // The following code'output is wheel_command[i].drive_angular_velocity and any_wheel_moving
-  if (translate_mode || rotate_mode) {
+  if (rotate_mode || params_.translate_mode) {
     // Apply velocity scaling based on steering error to prevent motion when wheels are misaligned
     constexpr double min_steering_error_allowed = 0.001;
     constexpr double min_wheel_velocity = 0.001;  // rad/s, threshold to consider wheel as stopped
