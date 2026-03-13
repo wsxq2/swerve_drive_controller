@@ -331,6 +331,12 @@ controller_interface::return_type SwerveController::update(
     return controller_interface::return_type::OK;
   }
 
+  // Check for parameter updates and apply them
+  if (param_listener_->is_old(params_))
+  {
+    params_ = param_listener_->get_params();
+  }
+
   const auto current_time = time;
 
   auto last_command_msg = *(received_velocity_msg_ptr_.readFromRT());

@@ -211,5 +211,5 @@ swerve_drive_controller:
     type: bool,
     default_value: false,
     description: "If true, the robot will be in translate mode. This can help prevent motion when wheels are misaligned.",
-    read_only: true
+    read_only: false
   }
