@@ -356,33 +356,6 @@ controller_interface::return_type SwerveController::update(
     (std::fabs(last_command_msg->twist.linear.y) < EPS) &&
     (std::fabs(last_command_msg->twist.angular.z) < EPS);
 
-  // If this is not a stop command and we have a previous command, check thresholds
-  if (!is_stop && last_executed_command_ != nullptr)
-  {
-    const double delta_vx = std::abs(last_command_msg->twist.linear.x - last_executed_command_->twist.linear.x);
-    const double delta_vy = std::abs(last_command_msg->twist.linear.y - last_executed_command_->twist.linear.y);
-    const double delta_wz = std::abs(last_command_msg->twist.angular.z - last_executed_command_->twist.angular.z);
-
-    // If all changes are below threshold, use the last executed command
-    if (delta_vx < params_.cmd_vel_linear_x_threshold &&
-        delta_vy < params_.cmd_vel_linear_y_threshold &&
-        delta_wz < params_.cmd_vel_angular_z_threshold)
-    {
-      // Continue with the last executed command
-      last_command_msg = last_executed_command_;
-    }
-    else
-    {
-      // Changes exceed threshold, update the last executed command
-      last_executed_command_ = last_command_msg;
-    }
-  }
-  else
-  {
-    // This is a stop command or first command, always execute and save
-    last_executed_command_ = last_command_msg;
-  }
-
   auto wheel_command = swerveDriveKinematics_.compute_wheel_commands(
     last_command_msg->twist.linear.x, last_command_msg->twist.linear.y,
     last_command_msg->twist.angular.z);
@@ -397,50 +370,36 @@ controller_interface::return_type SwerveController::update(
   wheel_command =
     swerveDriveKinematics_.optimize_wheel_commands(wheel_command, current_steering_angles);
 
-  // Apply velocity scaling based on steering error to prevent motion when wheels are misaligned
-  constexpr double min_steering_error = 0.001;
-  constexpr double min_wheel_velocity = 0.001; // rad/s, threshold to consider wheel as stopped
-
-  // First, check if any wheel is misaligned
-  bool any_wheel_misaligned = false;
+  const double min_steering_error = M_PI / 6.0;  // 30 degrees
   for (std::size_t i = 0; i < NUM_WHEELS; i++)
   {
-    const double steering_error = std::abs(
+    double steering_error = std::abs(
       angles::shortest_angular_distance(
         current_steering_angles[i], wheel_command[i].steering_angle));
 
-    if (steering_error > min_steering_error) {
-      any_wheel_misaligned = true;
-      break;
-    }
-  }
-
-  // Check if any wheel is still moving
-  bool any_wheel_moving = false;
-  for (std::size_t i = 0; i < NUM_WHEELS; i++)
-  {
-    const double current_velocity = std::abs(wheel_handles_[i]->get_feedback());
-    if (current_velocity > min_wheel_velocity) {
-      any_wheel_moving = true;
-      break;
-    }
-  }
-
-  // Safety logic: If any wheel is misaligned, stop all wheels
-  // Only allow steering adjustment when wheels are completely stopped
-  // This prevents motor errors from simultaneous velocity and steering changes
-  if (any_wheel_misaligned) {
-    // Set all wheel velocities to 0 to stop/prevent motion
-    for (std::size_t i = 0; i < NUM_WHEELS; i++)
+    double velocity_scale = 1.0;
+    if (steering_error > min_steering_error)
     {
-      wheel_command[i].drive_angular_velocity = 0.0;
+      if (steering_error >= 1.5608)  // ~89.5 degrees
+      {
+        // cos(1.5608) = 0.01
+        velocity_scale = 0.01 / std::cos(min_steering_error);
+      }
+      else
+      {
+        // Scale velocity based on steering error using cosine function
+        velocity_scale = std::cos(steering_error) / std::cos(min_steering_error);
+      }
     }
+
+    // Apply velocity scaling
+    wheel_command[i].drive_angular_velocity *= velocity_scale;
   }
 
   for (std::size_t i = 0; i < NUM_WHEELS; i++)
   {
     // Determine whether to update steering angle
-    if (is_stop || any_wheel_moving)
+    if (is_stop)
     {
       // Maintain current steering angle when stopped or when wheels need to stop first
       axle_handles_[i]->set_position(previous_steering_angles_[i]);
