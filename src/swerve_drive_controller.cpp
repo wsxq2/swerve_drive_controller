@@ -381,7 +381,7 @@ controller_interface::return_type SwerveController::update(
                      (std::fabs(last_command_msg->twist.angular.z) > EPS);
   bool any_wheel_moving = false;
   // The following code'output is wheel_command[i].drive_angular_velocity and any_wheel_moving
-  if (rotate_mode || params_.translate_mode) {
+  if (rotate_mode || params_.move_after_aligned) {
     // Apply velocity scaling based on steering error to prevent motion when wheels are misaligned
     constexpr double min_steering_error_allowed = 0.001;
     constexpr double min_wheel_velocity = 0.001;  // rad/s, threshold to consider wheel as stopped
