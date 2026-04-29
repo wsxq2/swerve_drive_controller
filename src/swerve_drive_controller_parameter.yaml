@@ -213,3 +213,21 @@ swerve_drive_controller:
     description: "If true, the robot will move after aligned. This can help prevent motion when wheels are misaligned.",
     read_only: false
   }
+  max_linear_velocity: {
+    type: double,
+    default_value: 1.0,
+    description: "Maximum linear velocity (m/s) for the robot chassis. Can be dynamically adjusted for safety (e.g., based on platform height).",
+    validation: {
+      "swerve_drive_controller::gt_eq<>": [0.0]
+    },
+    read_only: false
+  }
+  max_angular_velocity: {
+    type: double,
+    default_value: 1.0,
+    description: "Maximum angular velocity (rad/s) for the robot chassis. Can be dynamically adjusted for safety (e.g., based on platform height).",
+    validation: {
+      "swerve_drive_controller::gt_eq<>": [0.0]
+    },
+    read_only: false
+  }

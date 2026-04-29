@@ -357,14 +357,28 @@ controller_interface::return_type SwerveController::update(
     last_command_msg->twist.angular.z = 0.0;
   }
 
+  // Apply velocity limits
+  double vx = last_command_msg->twist.linear.x;
+  double vy = last_command_msg->twist.linear.y;
+  double wz = last_command_msg->twist.angular.z;
+  
+  // Limit linear velocity (preserve direction, scale magnitude)
+  double linear_magnitude = std::sqrt(vx * vx + vy * vy);
+  if (linear_magnitude > params_.max_linear_velocity) {
+    double scale = params_.max_linear_velocity / linear_magnitude;
+    vx *= scale;
+    vy *= scale;
+  }
+  
+  // Limit angular velocity
+  wz = std::clamp(wz, -params_.max_angular_velocity, params_.max_angular_velocity);
+  
   const bool is_stop =
-    (std::fabs(last_command_msg->twist.linear.x) < EPS) &&
-    (std::fabs(last_command_msg->twist.linear.y) < EPS) &&
-    (std::fabs(last_command_msg->twist.angular.z) < EPS);
+    (std::fabs(vx) < EPS) &&
+    (std::fabs(vy) < EPS) &&
+    (std::fabs(wz) < EPS);
 
-  auto wheel_command = swerveDriveKinematics_.compute_wheel_commands(
-    last_command_msg->twist.linear.x, last_command_msg->twist.linear.y,
-    last_command_msg->twist.angular.z);
+  auto wheel_command = swerveDriveKinematics_.compute_wheel_commands(vx, vy, wz);
 
   std::array<double, NUM_WHEELS> current_steering_angles{};
   for (std::size_t i = 0; i < NUM_WHEELS; ++i)
